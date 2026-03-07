@@ -346,14 +346,20 @@
         if (participants.length === 0) return alert("メンバーがいません");
 
         const perPerson = Math.floor(amount / participants.length);
+        const remainder = amount % participants.length;
+
         participants.forEach((p) => {
             p.amount = (p.amount || 0) + perPerson;
+            // The person performing the operation absorbs the remainder
+            if (p.id === myParticipantId) {
+                p.amount += remainder;
+            }
         });
 
         currentAmount = "";
         saveAndRecalculate();
         showToastNotification(
-            `各員に ¥${perPerson.toLocaleString()} ずつ追加しました`,
+            `各員に ¥${perPerson.toLocaleString()} ずつ追加しました${remainder > 0 ? `（端数 ${remainder}円はあなたに加算）` : ""}`,
         );
     }
 
