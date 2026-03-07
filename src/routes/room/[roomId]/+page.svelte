@@ -20,9 +20,6 @@
     } from "firebase/firestore";
     import QRCode from "qrcode";
 
-    // Driver.js global type definition
-    declare var window: any;
-
     let roomId = $page.params.roomId;
 
     let participants = $state<Participant[]>([]);
@@ -49,6 +46,7 @@
     let showIdentityModal = $state(false);
     let newParticipantName = $state("");
     let newParticipantMethod = $state<"PayPay" | "Cash">("PayPay");
+    let newParticipantPaypayLink = $state("");
 
     let showQrModal = $state(false);
     let qrDataUrl = $state("");
@@ -58,8 +56,8 @@
 
     let unsubscribe: (() => void) | undefined;
 
-    // Will be defined at the bottom, declared here for TS hoisting
-    let startTutorial: () => void;
+    // Will be defined at the bottom
+    let startTutorial = $state(() => {});
 
     onMount(() => {
         const savedIdentity = localStorage.getItem(`room_${roomId}_identity`);
@@ -188,6 +186,7 @@
             name: newParticipantName,
             paymentMethod: newParticipantMethod,
             paypayId: "",
+            paypayLink: newParticipantPaypayLink,
             amount: 0,
         };
         participants.push(newP);
@@ -270,14 +269,14 @@
         }, 3000);
     }
 
-    async function handlePayPayClick(
-        fromId: string,
-        amount: number,
-        paypayUrl: string,
-    ) {
+    async function handlePayPayClick(fromId: string, amount: number) {
+        // 幹事の特定
+        const host = participants.find((p) => p.id === currentHostId);
+        const paypayUrl = host?.paypayLink;
+
         if (!paypayUrl) {
             return alert(
-                "幹事のPayPay受取リンクが設定されていません。最終精算タブ上部で設定してください。",
+                "幹事のPayPay受取リンクが設定されていません。幹事に設定を依頼してください。",
             );
         }
 
@@ -473,13 +472,13 @@
     }
 
     startTutorial = function () {
-        if (!window.driver) {
+        if (!(window as any).driver) {
             console.warn("Driver.js not loaded yet, retrying in 500ms...");
             setTimeout(startTutorial, 500);
             return;
         }
 
-        const driverObj = window.driver.js.driver({
+        const driverObj = (window as any).driver.js.driver({
             showProgress: true,
             animate: true,
             allowClose: true,
@@ -723,7 +722,7 @@
                     class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 mb-3 text-sm font-bold"
                 />
 
-                <div class="flex items-center rounded-xl bg-gray-200 p-1 mb-6">
+                <div class="flex items-center rounded-xl bg-gray-200 p-1 mb-4">
                     <button
                         onclick={() => (newParticipantMethod = "PayPay")}
                         class="flex-1 py-2 text-sm font-bold rounded-lg transition-all {newParticipantMethod ===
@@ -739,6 +738,95 @@
                             : 'text-gray-500'}">現金派</button
                     >
                 </div>
+
+                {#if newParticipantMethod === "PayPay"}
+                    <div class="mb-6 animate-fade-in">
+                        <label
+                            class="block text-xs font-bold text-gray-400 mb-1.5 uppercase tracking-wider"
+                            for="modal-paypay-link"
+                            >PayPayマイコードURL {#if isHost}(幹事の場合は必須){/if}</label
+                        >
+                        <input
+                            id="modal-paypay-link"
+                            type="text"
+                            bind:value={newParticipantPaypayLink}
+                            placeholder="https://paypay.me/..."
+                            class="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 text-sm font-bold mb-3 shadow-sm transition-all"
+                        />
+
+                        <div
+                            class="bg-gray-50 rounded-2xl p-4 border border-gray-100 flex flex-col gap-3"
+                        >
+                            <div
+                                class="text-xs text-gray-500 font-medium space-y-1.5"
+                            >
+                                <p
+                                    class="font-bold text-gray-600 mb-2 flex items-center gap-1.5"
+                                >
+                                    <svg
+                                        class="w-4 h-4 text-indigo-500"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                        ><path
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                            stroke-width="2.5"
+                                            d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                                        ></path></svg
+                                    >
+                                    リンクの取得方法
+                                </p>
+                                <ul class="space-y-1 ml-1 leading-relaxed">
+                                    <li class="flex items-center gap-2">
+                                        <span
+                                            class="w-4 h-4 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-[10px] font-bold"
+                                            >1</span
+                                        >
+                                        PayPay右下の「アカウント」
+                                    </li>
+                                    <li class="flex items-center gap-2">
+                                        <span
+                                            class="w-4 h-4 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-[10px] font-bold"
+                                            >2</span
+                                        >
+                                        「マイコード」をタップ
+                                    </li>
+                                    <li class="flex items-center gap-2">
+                                        <span
+                                            class="w-4 h-4 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-[10px] font-bold"
+                                            >3</span
+                                        >
+                                        「このページのURLをコピー」
+                                    </li>
+                                </ul>
+                            </div>
+                            <button
+                                onclick={() =>
+                                    window.open(
+                                        "paypay://",
+                                        "_blank",
+                                        "noopener,noreferrer",
+                                    )}
+                                class="w-full flex items-center justify-center gap-2 py-2.5 border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 hover:text-gray-800 rounded-xl text-xs font-bold transition-all shadow-sm active:scale-95"
+                            >
+                                <svg
+                                    class="w-4 h-4"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                    ><path
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        stroke-width="2"
+                                        d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"
+                                    ></path></svg
+                                >
+                                PayPayアプリを開く
+                            </button>
+                        </div>
+                    </div>
+                {/if}
 
                 <button
                     onclick={joinAsNewParticipant}
@@ -1183,86 +1271,7 @@
                                     </div>
 
                                     {#if p.paymentMethod === "PayPay"}
-                                        <div
-                                            id="tutorial-paypay-input"
-                                            class="space-y-2"
-                                        >
-                                            <input
-                                                type="text"
-                                                bind:value={p.paypayId}
-                                                oninput={saveAndRecalculate}
-                                                disabled={!isHost &&
-                                                    p.id !== myParticipantId}
-                                                class="w-full px-3 py-2 border border-gray-200 bg-white rounded-xl focus:ring-2 focus:ring-primary-500 text-xs transition-colors disabled:bg-gray-100 placeholder-gray-400"
-                                                placeholder="PayPay受取リンク または ID"
-                                                title="PayPayアプリの「受け取る」からリンクをコピーして貼り付けてください"
-                                            />
-                                            {#if isHost || p.id === myParticipantId}
-                                                <div
-                                                    class="bg-gray-50 rounded-xl p-3 border border-gray-100 flex flex-col gap-2"
-                                                >
-                                                    <div
-                                                        class="text-xs text-gray-500 font-medium space-y-1"
-                                                    >
-                                                        <p
-                                                            class="font-bold text-gray-600 mb-1.5 flex items-center gap-1"
-                                                        >
-                                                            <svg
-                                                                class="w-3.5 h-3.5"
-                                                                fill="none"
-                                                                stroke="currentColor"
-                                                                viewBox="0 0 24 24"
-                                                                ><path
-                                                                    stroke-linecap="round"
-                                                                    stroke-linejoin="round"
-                                                                    stroke-width="2.5"
-                                                                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                                                                ></path></svg
-                                                            >
-                                                            リンクの取得方法
-                                                        </p>
-                                                        <ul
-                                                            class="space-y-0.5 ml-1"
-                                                        >
-                                                            <li>
-                                                                1.
-                                                                PayPay右下の「アカウント」
-                                                            </li>
-                                                            <li>
-                                                                2.
-                                                                「マイコード」をタップ
-                                                            </li>
-                                                            <li>
-                                                                3.
-                                                                「このページのURLをコピー」
-                                                            </li>
-                                                        </ul>
-                                                    </div>
-                                                    <button
-                                                        onclick={() =>
-                                                            window.open(
-                                                                "paypay://",
-                                                                "_blank",
-                                                            )}
-                                                        class="self-start mt-0.5 flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 hover:text-gray-800 rounded-lg text-xs font-bold transition-all shadow-sm active:scale-95"
-                                                    >
-                                                        <svg
-                                                            class="w-3.5 h-3.5"
-                                                            fill="none"
-                                                            stroke="currentColor"
-                                                            viewBox="0 0 24 24"
-                                                            ><path
-                                                                stroke-linecap="round"
-                                                                stroke-linejoin="round"
-                                                                stroke-width="2"
-                                                                d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"
-                                                            ></path></svg
-                                                        >
-                                                        PayPayアプリを開く
-                                                    </button>
-                                                </div>
-                                            {/if}
-                                        </div>
+                                        <!-- Removed old paypayId input and tutorial -->
                                     {/if}
                                 </div>
                             </div>
@@ -1387,6 +1396,9 @@
                                         </div>
                                     {:else}
                                         {#each transactions as t}
+                                            {@const host = participants.find(
+                                                (p) => p.id === currentHostId,
+                                            )}
                                             <div
                                                 class="bg-white rounded-2xl p-5 shadow-[0_2px_10px_rgba(0,0,0,0.03)] border border-gray-100/80 transform transition hover:-translate-y-1"
                                             >
@@ -1441,41 +1453,29 @@
                                                     >
                                                 </div>
 
-                                                {#if t.method === "PayPay" && t.toPaypayId}
-                                                    {@const paypayLink =
-                                                        t.toPaypayId.startsWith(
-                                                            "http",
-                                                        ) ||
-                                                        t.toPaypayId.startsWith(
-                                                            "paypay://",
-                                                        )
-                                                            ? t.toPaypayId
-                                                            : `paypay://send?userNum=${t.toPaypayId}&amount=${t.amount}`}
-                                                    <div class="mt-2">
-                                                        <button
-                                                            onclick={() =>
-                                                                handlePayPayClick(
-                                                                    t.fromId,
-                                                                    t.amount,
-                                                                    paypayLink,
-                                                                )}
-                                                            class="w-full flex items-center justify-center gap-2 px-4 py-3 bg-[#FF0033] text-white text-sm font-bold rounded-xl hover:bg-[#E6002E] transition-all shadow-md shadow-[#FF0033]/30 active:scale-95"
+                                                {#if t.method === "PayPay" && host?.paypayLink}
+                                                    <button
+                                                        onclick={() =>
+                                                            handlePayPayClick(
+                                                                t.fromId,
+                                                                t.amount,
+                                                            )}
+                                                        class="w-full flex items-center justify-center gap-2 px-4 py-3 bg-[#FF0033] text-white text-sm font-bold rounded-xl hover:bg-[#E6002E] transition-all shadow-md shadow-[#FF0033]/30 active:scale-95"
+                                                    >
+                                                        <svg
+                                                            class="w-5 h-5"
+                                                            fill="none"
+                                                            stroke="currentColor"
+                                                            viewBox="0 0 24 24"
+                                                            ><path
+                                                                stroke-linecap="round"
+                                                                stroke-linejoin="round"
+                                                                stroke-width="2"
+                                                                d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"
+                                                            ></path></svg
                                                         >
-                                                            <svg
-                                                                class="w-5 h-5"
-                                                                fill="none"
-                                                                stroke="currentColor"
-                                                                viewBox="0 0 24 24"
-                                                                ><path
-                                                                    stroke-linecap="round"
-                                                                    stroke-linejoin="round"
-                                                                    stroke-width="2"
-                                                                    d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"
-                                                                ></path></svg
-                                                            >
-                                                            PayPayで送金する
-                                                        </button>
-                                                    </div>
+                                                        PayPayで送金する
+                                                    </button>
                                                 {/if}
                                             </div>
                                         {/each}

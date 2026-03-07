@@ -5,7 +5,8 @@ export interface Participant {
     id: string;
     name: string;
     paymentMethod: PaymentMethod;
-    paypayId?: string; // PayPay Send Link / ID
+    paypayId?: string; // Legacy ID field
+    paypayLink?: string; // New PayPay Send Link / MyCode URL
     amount: number; // Current persistent amount from Numpad
 }
 
