@@ -184,6 +184,7 @@
             name: newParticipantName,
             paymentMethod: newParticipantMethod,
             paypayId: "",
+            amount: 0,
         };
         participants.push(newP);
 
@@ -270,27 +271,33 @@
         amount: number,
         paypayUrl: string,
     ) {
+        if (!paypayUrl) {
+            return alert(
+                "幹事のPayPay受取リンクが設定されていません。最終精算タブ上部で設定してください。",
+            );
+        }
+
         if (myParticipantId === fromId) {
             settlements[fromId] = true;
             saveStateToFirebase();
         }
 
         try {
-            await navigator.clipboard.writeText(amount.toString());
+            // Copy ONLY the digits (e.g. 1000 instead of "1,000円")
+            const amountStr = Math.round(amount).toString();
+            await navigator.clipboard.writeText(amountStr);
             showToastNotification(
-                `${amount.toLocaleString()}円をコピーしました！PayPayでペーストしてください。`,
+                `¥${amount.toLocaleString()} をコピーしました！PayPayで金額欄にペーストしてください。`,
             );
         } catch (err) {
             console.error("Failed to copy amount", err);
             showToastNotification("別タブでPayPayを開きます。");
         }
 
-        if (paypayUrl) {
-            // Give the toast a tiny fraction of a second to render before popping the new tab
-            setTimeout(() => {
-                window.open(paypayUrl, "_blank", "noopener,noreferrer");
-            }, 100);
-        }
+        // Give the toast a tiny fraction of a second to render
+        setTimeout(() => {
+            window.open(paypayUrl, "_blank", "noopener,noreferrer");
+        }, 150);
     }
 
     function handleNumpad(key: string) {
@@ -316,48 +323,38 @@
         if (!currentAmount) return;
         const amount = parseInt(currentAmount, 10);
         if (isNaN(amount) || amount <= 0) return;
-        if (!currentHostId || !myParticipantId)
-            return alert("参加者または幹事が不明です。");
+        if (!myParticipantId)
+            return alert(
+                "ユーザーが特定できません。もう一度参加してください。",
+            );
 
-        events.push({
-            id: Date.now().toString(),
-            title: "個人追加",
-            amount: amount,
-            payerId: currentHostId,
-            participations: [
-                {
-                    participantId: myParticipantId,
-                    weight: 0,
-                    fixedAdjustment: amount,
-                },
-            ],
-        });
-        currentAmount = "";
-        saveAndRecalculate();
-        showToastNotification(`¥${amount.toLocaleString()}を追加しました`);
+        const targetP = participants.find((p) => p.id === myParticipantId);
+        if (targetP) {
+            targetP.amount = (targetP.amount || 0) + amount;
+            currentAmount = "";
+            saveAndRecalculate();
+            showToastNotification(
+                `自分の負担に ¥${amount.toLocaleString()} を追加しました`,
+            );
+        }
     }
 
     function addAmountToAll() {
         if (!currentAmount) return;
         const amount = parseInt(currentAmount, 10);
         if (isNaN(amount) || amount <= 0) return;
-        if (!currentHostId) return alert("幹事が不明です。");
         if (participants.length === 0) return alert("メンバーがいません");
 
-        events.push({
-            id: Date.now().toString(),
-            title: "全員追加",
-            amount: amount,
-            payerId: currentHostId,
-            participations: participants.map((p) => ({
-                participantId: p.id,
-                weight: 1,
-                fixedAdjustment: 0,
-            })),
+        const perPerson = Math.floor(amount / participants.length);
+        participants.forEach((p) => {
+            p.amount = (p.amount || 0) + perPerson;
         });
+
         currentAmount = "";
         saveAndRecalculate();
-        showToastNotification(`¥${amount.toLocaleString()}を全員で割りました`);
+        showToastNotification(
+            `各員に ¥${perPerson.toLocaleString()} ずつ追加しました`,
+        );
     }
 
     function getParticipantBurden(pid: string) {
@@ -405,6 +402,7 @@
             name: `参加者${participants.length + 1}`,
             paymentMethod: "PayPay",
             paypayId: "",
+            amount: 0,
         });
         events.forEach((e) => {
             e.participations.push({

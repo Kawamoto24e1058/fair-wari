@@ -6,6 +6,7 @@ export interface Participant {
     name: string;
     paymentMethod: PaymentMethod;
     paypayId?: string; // PayPay Send Link / ID
+    amount: number; // Current persistent amount from Numpad
 }
 
 export interface EventParticipation {
@@ -60,12 +61,11 @@ export function calculateNetBalances(state: AppState): CalculationResult {
     const host = participants.find(p => p.id === hostId);
     if (!host) return { balances: [], transactions: [], hostAbsorbedAmount: 0 };
 
-    // 1. Calculate the exact mathematical burden for each participant based purely on Tab 1 Events.
-    // In the new Numpad system, events always have payerId === hostId.
-    // The "burden" (what they owe) is calculated by distributing the event amount over its participations.
+    // 1. Calculate the exact mathematical burden for each participant.
+    // We combine the direct p.amount field (new system) with the events list (legacy/compatibility).
     const exactBurdens: Record<string, number> = {};
     participants.forEach((p) => {
-        exactBurdens[p.id] = 0;
+        exactBurdens[p.id] = p.amount || 0;
     });
 
     for (const event of events) {
