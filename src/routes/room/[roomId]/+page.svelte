@@ -33,6 +33,8 @@
     let isInitialized = $state(false);
     let myParticipantId = $state<string | null>(null);
     let isHost = $state(false);
+    let currentHostId = $state<string | null>(null);
+    let hostAbsorbedAmount = $state<number>(0);
 
     let showIdentityModal = $state(false);
     let newParticipantName = $state("");
@@ -93,10 +95,12 @@
                 if (data.settlements) {
                     settlements = data.settlements || {};
                 }
-                if (data.hostId && myParticipantId) {
-                    isHost = data.hostId === myParticipantId;
-                    localStorage.setItem(
-                        `room_${roomId}_identity`,
+                if (data.hostId) {
+                    currentHostId = data.hostId;
+                    if (myParticipantId) {
+                        isHost = data.hostId === myParticipantId;
+                        localStorage.setItem(
+                            `room_${roomId}_identity`,
                         JSON.stringify({
                             participantId: myParticipantId,
                             isHost: isHost,
@@ -130,10 +134,11 @@
 
     function updateCalculation() {
         if (!isInitialized) return;
-        const state: AppState = { participants, events, roundMode };
+        const state: AppState = { participants, events, roundMode, hostId: currentHostId || undefined };
         const res = calculateNetBalances(state);
         balances = res.balances;
         transactions = res.transactions;
+        hostAbsorbedAmount = res.hostAbsorbedAmount;
     }
 
     function saveAndRecalculate() {
@@ -696,6 +701,7 @@
                             disabled={!isHost}
                             class="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 text-sm font-medium text-gray-700 disabled:opacity-50"
                         >
+                            <option value="none">🎯 丸めない（1円単位）</option>
                             <option value="nearest">💰 普通に四捨五入</option>
                             <option value="down">📉 払い・受取りを少なく</option
                             >
@@ -1148,6 +1154,30 @@
                                                 {/if}
                                             </div>
                                         {/each}
+                                    {/if}
+
+                                    {#if hostAbsorbedAmount > 0 && roundMode !== "none"}
+                                        {@const host = participants.find(
+                                            (p) => p.id === currentHostId,
+                                        )}
+                                        {#if host}
+                                            <div
+                                                class="mt-2 p-4 bg-indigo-900/50 rounded-xl border border-indigo-400/30 flex items-center justify-center gap-2 shadow-sm"
+                                            >
+                                                <div class="text-xl">✨</div>
+                                                <div
+                                                    class="text-xs font-bold text-indigo-100 leading-relaxed text-center"
+                                                >
+                                                    ※幹事（{host.name}）が計
+                                                    <span
+                                                        class="text-emerald-400 text-sm"
+                                                        >{Math.round(
+                                                            hostAbsorbedAmount,
+                                                        )}円</span
+                                                    > の端数を負担してくれました！
+                                                </div>
+                                            </div>
+                                        {/if}
                                     {/if}
                                 </div>
                             </div>

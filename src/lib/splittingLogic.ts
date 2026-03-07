@@ -1,5 +1,5 @@
 export type PaymentMethod = 'Cash' | 'PayPay';
-export type RoundMode = 'down' | 'up' | 'nearest';
+export type RoundMode = 'down' | 'up' | 'nearest' | 'none';
 
 export interface Participant {
     id: string;
@@ -26,6 +26,7 @@ export interface AppState {
     participants: Participant[];
     events: ExpenseEvent[];
     roundMode: RoundMode;
+    hostId?: string;
 }
 
 export interface Transaction {
@@ -46,9 +47,15 @@ export interface BalanceResult {
     paymentMethod: PaymentMethod;
 }
 
-export function calculateNetBalances(state: AppState): { balances: BalanceResult[]; transactions: Transaction[] } {
+export interface CalculationResult {
+    balances: BalanceResult[];
+    transactions: Transaction[];
+    hostAbsorbedAmount: number;
+}
+
+export function calculateNetBalances(state: AppState): CalculationResult {
     const { participants, events, roundMode } = state;
-    if (participants.length === 0 || events.length === 0) return { balances: [], transactions: [] };
+    if (participants.length === 0 || events.length === 0) return { balances: [], transactions: [], hostAbsorbedAmount: 0 };
 
     // 1. Calculate raw balances (Positive = Receives back, Negative = Owes)
     const rawBalances: Record<string, number> = {};
@@ -95,6 +102,9 @@ export function calculateNetBalances(state: AppState): { balances: BalanceResult
             } else if (roundMode === 'up') {
                 // Cash disfavors cash user: pays more, receives more
                 rounded = sign * Math.ceil(absBal / 100) * 100;
+            } else if (roundMode === 'none') {
+                // No rounding, 1 yen precision
+                rounded = Math.round(balance);
             } else {
                 rounded = Math.round(balance / 100) * 100;
             }
@@ -105,15 +115,31 @@ export function calculateNetBalances(state: AppState): { balances: BalanceResult
         return { p, balance, origBalance: balance };
     });
 
-    // 3. Distribute cash difference to PayPay users
+    // 3. Distribute cash difference to Host or PayPay users
+    let hostAbsorbedAmount = 0;
     const paypayUsers = adjustedBalances.filter((x) => x.p.paymentMethod === 'PayPay');
-    if (paypayUsers.length > 0) {
-        const diffPerPerson = cashDifference / paypayUsers.length;
-        paypayUsers.forEach((x) => {
-            x.balance += diffPerPerson;
-        });
-    } else if (adjustedBalances.length > 0) {
-        adjustedBalances[0].balance += cashDifference;
+    if (Math.abs(cashDifference) > 0.001) {
+        let takenHitByHost = false;
+        if (state.hostId) {
+            const hostObj = adjustedBalances.find((x) => x.p.id === state.hostId);
+            if (hostObj) {
+                hostObj.balance += cashDifference;
+                // If cashDifference is negative, cash user paid less, so host absorbs the difference (loss)
+                hostAbsorbedAmount = cashDifference < 0 ? -cashDifference : 0;
+                takenHitByHost = true;
+            }
+        }
+
+        if (!takenHitByHost) {
+            if (paypayUsers.length > 0) {
+                const diffPerPerson = cashDifference / paypayUsers.length;
+                paypayUsers.forEach((x) => {
+                    x.balance += diffPerPerson;
+                });
+            } else if (adjustedBalances.length > 0) {
+                adjustedBalances[0].balance += cashDifference;
+            }
+        }
     }
 
     // 4. Round to 1 yen
@@ -182,5 +208,5 @@ export function calculateNetBalances(state: AppState): { balances: BalanceResult
         if (con.amount === 0) c++;
     }
 
-    return { balances, transactions };
+    return { balances, transactions, hostAbsorbedAmount };
 }
