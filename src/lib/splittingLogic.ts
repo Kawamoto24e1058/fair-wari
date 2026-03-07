@@ -54,159 +54,97 @@ export interface CalculationResult {
 }
 
 export function calculateNetBalances(state: AppState): CalculationResult {
-    const { participants, events, roundMode } = state;
-    if (participants.length === 0 || events.length === 0) return { balances: [], transactions: [], hostAbsorbedAmount: 0 };
+    const { participants, events, roundMode, hostId } = state;
+    if (participants.length === 0 || !hostId) return { balances: [], transactions: [], hostAbsorbedAmount: 0 };
 
-    // 1. Calculate raw balances (Positive = Receives back, Negative = Owes)
-    const rawBalances: Record<string, number> = {};
-    const getParticipant = (id: string) => participants.find((p) => p.id === id);
+    const host = participants.find(p => p.id === hostId);
+    if (!host) return { balances: [], transactions: [], hostAbsorbedAmount: 0 };
 
+    // 1. Calculate the exact mathematical burden for each participant based purely on Tab 1 Events.
+    // In the new Numpad system, events always have payerId === hostId.
+    // The "burden" (what they owe) is calculated by distributing the event amount over its participations.
+    const exactBurdens: Record<string, number> = {};
     participants.forEach((p) => {
-        rawBalances[p.id] = 0;
+        exactBurdens[p.id] = 0;
     });
 
     for (const event of events) {
-        if (!getParticipant(event.payerId)) continue;
-
-        rawBalances[event.payerId] += event.amount;
-
         const totalFixed = event.participations.reduce((sum, p) => sum + p.fixedAdjustment, 0);
         const remainingAmount = event.amount - totalFixed;
 
-        const activeParticipations = event.participations.filter((p) => p.weight > 0 && getParticipant(p.participantId));
+        const activeParticipations = event.participations.filter((p) => p.weight > 0 && exactBurdens[p.participantId] !== undefined);
         const totalWeight = activeParticipations.reduce((sum, p) => sum + p.weight, 0);
 
         for (const p of event.participations) {
-            if (!getParticipant(p.participantId)) continue;
+            if (exactBurdens[p.participantId] === undefined) continue;
             let share = p.fixedAdjustment;
             if (p.weight > 0 && totalWeight > 0) {
                 share += remainingAmount * (p.weight / totalWeight);
             }
-            rawBalances[p.participantId] -= share;
+            exactBurdens[p.participantId] += share;
         }
     }
 
-    // 2. Adjust Cash users' balances
-    let cashDifference = 0;
-    const adjustedBalances = participants.map((p) => {
-        const balance = rawBalances[p.id] ?? 0;
+    // 2. Apply rounding to the users' exact burdens based on the roundMode if they are Cash users.
+    let hostAbsorbedAmount = 0; // Negative means the host lost money due to rounding, positive means host gained.
+    const balances: BalanceResult[] = participants.map((p) => {
+        const exactBurden = exactBurdens[p.id] ?? 0;
+        let finalBurdenToPay = exactBurden;
 
-        if (p.paymentMethod === 'Cash') {
-            let rounded = balance;
-            const absBal = Math.abs(balance);
-            const sign = Math.sign(balance);
-
+        if (p.paymentMethod === 'Cash' && p.id !== hostId) {
             if (roundMode === 'down') {
-                // Cash favors cash user: pays less, receives less
-                rounded = sign * Math.floor(absBal / 100) * 100;
+                // Down: Guest pays less. E.g. 1999 -> 1900.
+                finalBurdenToPay = Math.floor(exactBurden / 100) * 100;
             } else if (roundMode === 'up') {
-                // Cash disfavors cash user: pays more, receives more
-                rounded = sign * Math.ceil(absBal / 100) * 100;
+                // Up: Guest pays more. E.g. 1901 -> 2000.
+                finalBurdenToPay = Math.ceil(exactBurden / 100) * 100;
             } else if (roundMode === 'none') {
-                // No rounding, 1 yen precision
-                rounded = Math.round(balance);
+                finalBurdenToPay = Math.round(exactBurden); // 1 yen precision 
             } else {
-                rounded = Math.round(balance / 100) * 100;
+                // Nearest
+                finalBurdenToPay = Math.round(exactBurden / 100) * 100;
             }
-
-            cashDifference += balance - rounded;
-            return { p, balance: rounded, origBalance: balance };
+        } else {
+            // PayPay & Host always round to nearest 1-yen exact
+            finalBurdenToPay = Math.round(exactBurden);
         }
-        return { p, balance, origBalance: balance };
+
+        // Calculate how much the host is absorbing/gaining from this user's rounding.
+        if (p.id !== hostId) {
+            hostAbsorbedAmount += (exactBurden - finalBurdenToPay);
+        }
+
+        return {
+            participantId: p.id,
+            name: p.name,
+            netBalance: -exactBurden, // Historically, negative meant "owes". We keep semantics for potential UI reuse safely.
+            roundedBalance: -finalBurdenToPay,
+            paymentMethod: p.paymentMethod
+        };
     });
 
-    // 3. Distribute cash difference to Host or PayPay users
-    let hostAbsorbedAmount = 0;
-    const paypayUsers = adjustedBalances.filter((x) => x.p.paymentMethod === 'PayPay');
-    if (Math.abs(cashDifference) > 0.001) {
-        let takenHitByHost = false;
-        if (state.hostId) {
-            const hostObj = adjustedBalances.find((x) => x.p.id === state.hostId);
-            if (hostObj) {
-                hostObj.balance += cashDifference;
-                // If cashDifference is negative, cash user paid less, so host absorbs the difference (loss)
-                hostAbsorbedAmount = cashDifference < 0 ? -cashDifference : 0;
-                takenHitByHost = true;
-            }
-        }
+    // We only care about how much the Host had to *pay out of pocket* (absorb positive difference)
+    const displayHostAbsorbedAmount = hostAbsorbedAmount > 0 ? hostAbsorbedAmount : 0;
 
-        if (!takenHitByHost) {
-            if (paypayUsers.length > 0) {
-                const diffPerPerson = cashDifference / paypayUsers.length;
-                paypayUsers.forEach((x) => {
-                    x.balance += diffPerPerson;
-                });
-            } else if (adjustedBalances.length > 0) {
-                adjustedBalances[0].balance += cashDifference;
-            }
-        }
-    }
-
-    // 4. Round to 1 yen
-    let sum = 0;
-    adjustedBalances.forEach((x) => {
-        x.balance = Math.round(x.balance);
-        sum += x.balance;
-    });
-
-    let error = sum;
-    let index = 0;
-    while (error !== 0 && index < adjustedBalances.length * 10) {
-        let tgt = adjustedBalances[index % adjustedBalances.length];
-        if (paypayUsers.length > 0 && tgt.p.paymentMethod !== 'PayPay') {
-            index++;
-            continue;
-        }
-        if (error > 0) {
-            tgt.balance -= 1;
-            error -= 1;
-        } else if (error < 0) {
-            tgt.balance += 1;
-            error += 1;
-        }
-        index++;
-    }
-
-    const balances: BalanceResult[] = adjustedBalances.map((x) => ({
-        participantId: x.p.id,
-        name: x.p.name,
-        netBalance: x.origBalance,
-        roundedBalance: x.balance,
-        paymentMethod: x.p.paymentMethod
-    }));
-
-    // 5. Debt Simplification
-    const generators = adjustedBalances.filter((x) => x.balance > 0).map((x) => ({ ...x, amount: x.balance })).sort((a, b) => b.amount - a.amount);
-    const consumers = adjustedBalances.filter((x) => x.balance < 0).map((x) => ({ ...x, amount: -x.balance })).sort((a, b) => b.amount - a.amount);
-
+    // 3. Generate 1:1 Transactions from everyone to the Host
     const transactions: Transaction[] = [];
-    let g = 0,
-        c = 0;
 
-    while (g < generators.length && c < consumers.length) {
-        let gen = generators[g];
-        let con = consumers[c];
+    for (const bal of balances) {
+        if (bal.participantId === hostId) continue;
+        const amountOwed = Math.abs(bal.roundedBalance);
 
-        let amount = Math.min(gen.amount, con.amount);
-
-        if (amount > 0) {
+        if (amountOwed > 0) {
             transactions.push({
-                fromId: con.p.id,
-                fromName: con.p.name,
-                toId: gen.p.id,
-                toName: gen.p.name,
-                amount: amount,
-                method: con.p.paymentMethod,
-                toPaypayId: gen.p.paypayId
+                fromId: bal.participantId,
+                fromName: bal.name,
+                toId: host.id,
+                toName: host.name,
+                amount: amountOwed,
+                method: bal.paymentMethod,
+                toPaypayId: host.paypayId,
             });
         }
-
-        gen.amount -= amount;
-        con.amount -= amount;
-
-        if (gen.amount === 0) g++;
-        if (con.amount === 0) c++;
     }
 
-    return { balances, transactions, hostAbsorbedAmount };
+    return { balances, transactions, hostAbsorbedAmount: displayHostAbsorbedAmount };
 }

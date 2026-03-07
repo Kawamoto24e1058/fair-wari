@@ -20,6 +20,9 @@
     } from "firebase/firestore";
     import QRCode from "qrcode";
 
+    // Driver.js global type definition
+    declare var window: any;
+
     let roomId = $page.params.roomId;
 
     let participants = $state<Participant[]>([]);
@@ -36,6 +39,13 @@
     let currentHostId = $state<string | null>(null);
     let hostAbsorbedAmount = $state<number>(0);
 
+    let activeTab = $state<"calc" | "settle">("calc");
+    let currentAmount = $state("");
+
+    let unpaidCount = $derived(
+        transactions.filter((t) => !settlements[t.fromId]).length,
+    );
+
     let showIdentityModal = $state(false);
     let newParticipantName = $state("");
     let newParticipantMethod = $state<"PayPay" | "Cash">("PayPay");
@@ -47,6 +57,9 @@
     let showToast = $state(false);
 
     let unsubscribe: (() => void) | undefined;
+
+    // Will be defined at the bottom, declared here for TS hoisting
+    let startTutorial: () => void;
 
     onMount(() => {
         const savedIdentity = localStorage.getItem(`room_${roomId}_identity`);
@@ -117,6 +130,13 @@
                 window.location.href = "/";
             }
         });
+
+        // Initialize driver.js tutorial if not seen
+        setTimeout(() => {
+            if (!localStorage.getItem("hasSeenTutorial")) {
+                startTutorial();
+            }
+        }, 1000); // Small delay to let DOM paint first
     });
 
     onDestroy(() => {
@@ -245,7 +265,11 @@
         }, 3000);
     }
 
-    async function handlePayPayClick(fromId: string, amount: number) {
+    async function handlePayPayClick(
+        fromId: string,
+        amount: number,
+        paypayUrl: string,
+    ) {
         if (myParticipantId === fromId) {
             settlements[fromId] = true;
             saveStateToFirebase();
@@ -260,6 +284,105 @@
             console.error("Failed to copy amount", err);
             showToastNotification("別タブでPayPayを開きます。");
         }
+
+        if (paypayUrl) {
+            // Give the toast a tiny fraction of a second to render before popping the new tab
+            setTimeout(() => {
+                window.open(paypayUrl, "_blank", "noopener,noreferrer");
+            }, 100);
+        }
+    }
+
+    function handleNumpad(key: string) {
+        if (key === "C") {
+            currentAmount = "";
+        } else if (key === "00") {
+            if (currentAmount !== "" && currentAmount !== "0") {
+                currentAmount += "00";
+            }
+        } else {
+            if (currentAmount === "0") {
+                currentAmount = key;
+            } else {
+                currentAmount += key;
+            }
+        }
+        if (currentAmount.length > 7) {
+            currentAmount = currentAmount.slice(0, 7);
+        }
+    }
+
+    function addAmountToMyself() {
+        if (!currentAmount) return;
+        const amount = parseInt(currentAmount, 10);
+        if (isNaN(amount) || amount <= 0) return;
+        if (!currentHostId || !myParticipantId)
+            return alert("参加者または幹事が不明です。");
+
+        events.push({
+            id: Date.now().toString(),
+            title: "個人追加",
+            amount: amount,
+            payerId: currentHostId,
+            participations: [
+                {
+                    participantId: myParticipantId,
+                    weight: 0,
+                    fixedAdjustment: amount,
+                },
+            ],
+        });
+        currentAmount = "";
+        saveAndRecalculate();
+        showToastNotification(`¥${amount.toLocaleString()}を追加しました`);
+    }
+
+    function addAmountToAll() {
+        if (!currentAmount) return;
+        const amount = parseInt(currentAmount, 10);
+        if (isNaN(amount) || amount <= 0) return;
+        if (!currentHostId) return alert("幹事が不明です。");
+        if (participants.length === 0) return alert("メンバーがいません");
+
+        events.push({
+            id: Date.now().toString(),
+            title: "全員追加",
+            amount: amount,
+            payerId: currentHostId,
+            participations: participants.map((p) => ({
+                participantId: p.id,
+                weight: 1,
+                fixedAdjustment: 0,
+            })),
+        });
+        currentAmount = "";
+        saveAndRecalculate();
+        showToastNotification(`¥${amount.toLocaleString()}を全員で割りました`);
+    }
+
+    function getParticipantBurden(pid: string) {
+        let burden = 0;
+        for (const e of events) {
+            const sumWeights = e.participations.reduce(
+                (s, p) => s + p.weight,
+                0,
+            );
+            const sumFixed = e.participations.reduce(
+                (s, p) => s + p.fixedAdjustment,
+                0,
+            );
+            const ep = e.participations.find((p) => p.participantId === pid);
+            if (ep) {
+                if (sumWeights > 0) {
+                    burden +=
+                        (e.amount - sumFixed) * (ep.weight / sumWeights) +
+                        ep.fixedAdjustment;
+                } else {
+                    burden += ep.fixedAdjustment;
+                }
+            }
+        }
+        return Math.round(burden);
     }
 
     async function generateQrCode() {
@@ -340,10 +463,153 @@
             alert("コピーに失敗しました。");
         }
     }
+
+    startTutorial = function () {
+        if (!window.driver) {
+            console.warn("Driver.js not loaded yet, retrying in 500ms...");
+            setTimeout(startTutorial, 500);
+            return;
+        }
+
+        const driverObj = window.driver.js.driver({
+            showProgress: true,
+            animate: true,
+            allowClose: true,
+            doneBtnText: "よくわかりました",
+            nextBtnText: "次へ",
+            prevBtnText: "戻る",
+            popoverClass: "driverjs-apple",
+            onDestroyStarted: () => {
+                localStorage.setItem("hasSeenTutorial", "true");
+                driverObj.destroy();
+            },
+            steps: [
+                {
+                    popover: {
+                        title: "最強の割り勘アプリへようこそ",
+                        description:
+                            "面倒な文字入力は一切不要。テンキーで金額を打つだけで、誰がいくら払うか自動で計算します。",
+                        side: "over",
+                        align: "center",
+                    },
+                },
+                {
+                    element: "#tutorial-tabs",
+                    popover: {
+                        title: "2つのモードを使い分け",
+                        description:
+                            "食事中は『注文メモ』で金額を足していき、帰る時は『最終精算』でPayPay送金を行います。",
+                        side: "bottom",
+                        align: "center",
+                    },
+                },
+                {
+                    element: "#tutorial-numpad",
+                    popover: {
+                        title: "電卓感覚で入力",
+                        description:
+                            "メニューの金額を打ち込んで、『自分の分』か『全員で割る』を選ぶだけです。",
+                        side: "top",
+                        align: "center",
+                    },
+                },
+                {
+                    element: "#tutorial-settle-tab",
+                    popover: {
+                        title: "幹事の準備",
+                        description:
+                            "こちらの『最終精算』タブの中に、幹事のPayPayマイコードURLを貼る欄があります。事前に入力しておきましょう。",
+                        side: "bottom",
+                        align: "center",
+                    },
+                },
+            ],
+        });
+
+        // Switch to Tab 1 for numpad step visibility
+        activeTab = "calc";
+        setTimeout(() => driverObj.drive(), 100);
+    };
 </script>
 
 <svelte:head>
     <title>最強の割り勘アプリ - ルーム</title>
+    <link
+        rel="stylesheet"
+        href="https://cdn.jsdelivr.net/npm/driver.js@1.0.1/dist/driver.css"
+    />
+    <script
+        src="https://cdn.jsdelivr.net/npm/driver.js@1.0.1/dist/driver.js.iife.js"
+    ></script>
+    <style>
+        /* Apple-style Driver.js popover overrides */
+        .driverjs-apple {
+            background: #ffffff !important;
+            color: #1f2937 !important;
+            border-radius: 20px !important;
+            box-shadow:
+                0 20px 60px -10px rgba(0, 0, 0, 0.12),
+                0 0 0 1px rgba(0, 0, 0, 0.04) !important;
+            padding: 24px 24px 20px !important;
+            max-width: 320px !important;
+            font-family: inherit !important;
+        }
+        .driverjs-apple .driver-popover-title {
+            font-size: 1.0625rem !important;
+            font-weight: 800 !important;
+            color: #111827 !important;
+            margin-bottom: 8px !important;
+            line-height: 1.4 !important;
+            letter-spacing: -0.01em !important;
+        }
+        .driverjs-apple .driver-popover-description {
+            font-size: 0.875rem !important;
+            color: #6b7280 !important;
+            line-height: 1.6 !important;
+            font-weight: 500 !important;
+        }
+        .driverjs-apple .driver-popover-footer {
+            margin-top: 18px !important;
+            padding-top: 14px !important;
+            border-top: 1px solid #f3f4f6 !important;
+        }
+        .driverjs-apple .driver-popover-progress-text {
+            font-size: 0.75rem !important;
+            font-weight: 700 !important;
+            color: #9ca3af !important;
+        }
+        .driverjs-apple button.driver-popover-prev-btn,
+        .driverjs-apple button.driver-popover-close-btn {
+            background-color: #f3f4f6 !important;
+            color: #6b7280 !important;
+            border: none !important;
+            border-radius: 10px !important;
+            padding: 7px 14px !important;
+            font-size: 0.8125rem !important;
+            font-weight: 700 !important;
+            text-shadow: none !important;
+            box-shadow: none !important;
+        }
+        .driverjs-apple button.driver-popover-next-btn {
+            background-color: #4f46e5 !important;
+            color: #ffffff !important;
+            border: none !important;
+            border-radius: 10px !important;
+            padding: 7px 14px !important;
+            font-size: 0.8125rem !important;
+            font-weight: 700 !important;
+            text-shadow: none !important;
+            box-shadow: 0 2px 8px rgba(79, 70, 229, 0.3) !important;
+        }
+        .driverjs-apple button.driver-popover-next-btn:hover {
+            background-color: #4338ca !important;
+        }
+        .driverjs-apple .driver-popover-close-btn {
+            background: transparent !important;
+            color: #9ca3af !important;
+            padding: 4px !important;
+        }
+    </style>
 </svelte:head>
 
 <!-- QR Code Modal -->
@@ -491,18 +757,38 @@
                     最強の割り勘アプリ
                     {#if isHost}
                         <span
-                            class="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-[10px] font-black uppercase rounded-lg"
+                            class="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-[10px] font-black uppercase rounded-lg shadow-sm"
                             >Host</span
                         >
                     {:else if myParticipantId}
                         <span
-                            class="px-2 py-0.5 bg-gray-100 text-gray-600 text-[10px] font-black uppercase rounded-lg"
+                            class="px-2 py-0.5 bg-gray-100 text-gray-600 text-[10px] font-black uppercase rounded-lg shadow-sm"
                             >Guest</span
                         >
                     {/if}
                 </h1>
-                <p class="text-xs md:text-sm text-gray-500 font-medium mt-1">
+                <p
+                    class="text-xs md:text-sm text-gray-500 font-medium mt-1 flex items-center gap-2"
+                >
                     リアルタイム共有ルーム
+                    <button
+                        onclick={startTutorial}
+                        class="px-2 py-0.5 bg-gray-100 hover:bg-gray-200 text-gray-500 text-[10px] font-bold rounded-md transition-colors flex items-center gap-1 shadow-sm"
+                    >
+                        <svg
+                            class="w-3 h-3"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                            ><path
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                stroke-width="2.5"
+                                d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                            ></path></svg
+                        >
+                        ガイドを見る
+                    </button>
                 </p>
             </div>
             <div class="flex items-center gap-2">
@@ -546,10 +832,208 @@
         </div>
     </header>
 
-    <div class="max-w-7xl mx-auto px-4 py-8">
-        <div class="grid grid-cols-1 xl:grid-cols-12 gap-8">
-            <!-- Left Column: Participants & Settings -->
-            <div class="xl:col-span-3 space-y-6">
+    <!-- Tabs Container -->
+    <div
+        id="tutorial-tabs"
+        class="bg-white border-b border-gray-200 sticky top-[73px] md:top-[77px] z-[5] mb-6 shadow-sm"
+    >
+        <div class="max-w-3xl mx-auto flex">
+            <button
+                onclick={() => (activeTab = "calc")}
+                class="flex-1 py-3 text-center font-bold text-sm transition-colors border-b-[3px] {activeTab ===
+                'calc'
+                    ? 'border-primary-600 text-primary-600'
+                    : 'border-transparent text-gray-500 hover:bg-gray-50'} flex flex-col items-center justify-center gap-1"
+            >
+                <svg
+                    class="w-5 h-5 mb-0.5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    ><path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2.5"
+                        d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                    ></path></svg
+                >
+                注文メモ
+            </button>
+            <button
+                id="tutorial-settle-tab"
+                onclick={() => (activeTab = "settle")}
+                class="flex-1 py-3 text-center font-bold text-sm transition-colors border-b-[3px] {activeTab ===
+                'settle'
+                    ? 'border-primary-600 text-primary-600'
+                    : 'border-transparent text-gray-500 hover:bg-gray-50'} flex flex-col items-center justify-center gap-1"
+            >
+                <svg
+                    class="w-5 h-5 mb-0.5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    ><path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        stroke-width="2.5"
+                        d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                    ></path></svg
+                >
+                最終精算
+            </button>
+        </div>
+    </div>
+
+    <!-- TAB 1: CALC -->
+    <div
+        class="{activeTab === 'calc'
+            ? 'block'
+            : 'hidden'} max-w-3xl mx-auto px-4 relative min-h-screen"
+    >
+        <section
+            class="bg-white rounded-3xl shadow-sm border border-gray-200 p-6 mb-80"
+        >
+            <h2
+                class="text-xl font-bold mb-5 flex items-center justify-between"
+            >
+                <span class="text-gray-800">メンバーの現在負担額</span>
+                <span
+                    class="text-sm font-medium text-gray-500 bg-gray-100 px-3 py-1 rounded-full"
+                    >合計: ¥{events
+                        .reduce((acc, ev) => acc + ev.amount, 0)
+                        .toLocaleString()}</span
+                >
+            </h2>
+            <div class="space-y-3">
+                {#each balances as r}
+                    <div
+                        class="bg-gray-50 border border-gray-100 rounded-2xl p-4 flex justify-between items-center relative transition-shadow"
+                    >
+                        {#if r.participantId === myParticipantId}
+                            <div
+                                class="absolute -top-2 left-4 bg-indigo-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow-sm z-10 w-fit"
+                            >
+                                YOURS
+                            </div>
+                        {/if}
+                        <div class="flex items-center gap-3">
+                            <div
+                                class="w-10 h-10 rounded-full bg-white flex items-center justify-center font-bold text-gray-400 shadow-sm border border-gray-200 text-sm"
+                            >
+                                {r.name.substring(0, 2)}
+                            </div>
+                            <div class="font-bold text-gray-800 text-base">
+                                {r.name}
+                            </div>
+                        </div>
+                        <div class="text-right flex-shrink-0">
+                            <div
+                                class="text-[10px] text-gray-400 font-bold mb-0.5 uppercase tracking-wide"
+                            >
+                                負担額
+                            </div>
+                            <div
+                                class="text-xl font-black text-gray-900 border-b-2 border-indigo-200 inline-block min-w-[80px]"
+                            >
+                                ¥{getParticipantBurden(
+                                    r.participantId,
+                                ).toLocaleString()}
+                            </div>
+                        </div>
+                    </div>
+                {/each}
+                {#if balances.length === 0}
+                    <p class="text-sm text-gray-400 text-center py-8">
+                        まだメンバーがいません
+                    </p>
+                {/if}
+            </div>
+        </section>
+
+        <!-- Fixed Numpad -->
+        <div
+            class="fixed bottom-0 left-0 right-0 bg-white shadow-[0_-10px_40px_rgba(0,0,0,0.08)] rounded-t-[2rem] border-t border-gray-100 p-5 z-40 pb-6"
+        >
+            <div id="tutorial-numpad" class="max-w-3xl mx-auto">
+                <!-- Display -->
+                <div
+                    class="bg-gray-50 rounded-2xl p-4 mb-4 text-right overflow-hidden border border-gray-200 shadow-inner flex justify-between items-center"
+                >
+                    <span class="text-gray-400 font-bold text-sm">入力金額</span
+                    >
+                    <span
+                        class="text-4xl font-black text-gray-800 tracking-tighter truncate leading-none"
+                        >¥{currentAmount
+                            ? parseInt(currentAmount, 10).toLocaleString()
+                            : "0"}</span
+                    >
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="grid grid-cols-2 gap-3 mb-4">
+                    <button
+                        onclick={addAmountToMyself}
+                        class="bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-bold py-3.5 rounded-2xl flex flex-col items-center justify-center gap-1.5 active:scale-95 transition-all text-sm shadow-sm group"
+                    >
+                        <svg
+                            class="w-6 h-6 text-emerald-500 mb-0.5 group-active:-translate-y-1 transition-transform"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                            ><path
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                stroke-width="2.5"
+                                d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                            ></path></svg
+                        >
+                        自分の支払いに
+                    </button>
+                    <button
+                        onclick={addAmountToAll}
+                        class="bg-indigo-50 text-indigo-700 hover:bg-indigo-100 font-bold py-3.5 rounded-2xl flex flex-col items-center justify-center gap-1.5 active:scale-95 transition-all text-sm shadow-sm group"
+                    >
+                        <svg
+                            class="w-6 h-6 text-indigo-500 mb-0.5 group-active:-translate-y-1 transition-transform"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                            ><path
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                stroke-width="2.5"
+                                d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"
+                            ></path></svg
+                        >
+                        全員で割る
+                    </button>
+                </div>
+
+                <!-- Keys -->
+                <div class="grid grid-cols-3 gap-2">
+                    {#each ["7", "8", "9", "4", "5", "6", "1", "2", "3", "00", "0", "C"] as key}
+                        <button
+                            onclick={() => handleNumpad(key)}
+                            class="{key === 'C'
+                                ? 'bg-red-50 text-red-500 hover:bg-red-100 border-red-100'
+                                : 'bg-white text-gray-800 hover:bg-gray-50 border-gray-100'} font-black text-2xl py-4 rounded-2xl shadow-sm border active:scale-95 transition-all"
+                            >{key}</button
+                        >
+                    {/each}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- TAB 2: SETTLE -->
+    <div
+        class="{activeTab === 'settle'
+            ? 'block'
+            : 'hidden'} max-w-3xl mx-auto px-4 space-y-6 mt-4"
+    >
+        <!-- Members Settings (former Left Column) -->
+        <div class="space-y-6">
+            <div class="space-y-6">
                 <section
                     class="bg-white rounded-3xl shadow-sm border border-gray-200 p-6 {isHost
                         ? ''
@@ -640,10 +1124,22 @@
                                             <button
                                                 onclick={() =>
                                                     transferHost(p.id)}
-                                                class="text-[10px] text-indigo-600 hover:text-white hover:bg-indigo-500 bg-indigo-50 px-2 py-2 rounded-lg transition-colors font-bold whitespace-nowrap shadow-sm border border-indigo-100"
+                                                class="text-[10px] text-indigo-600 hover:text-white hover:bg-indigo-500 bg-indigo-50 px-2 py-1.5 rounded-lg transition-colors font-bold whitespace-nowrap shadow-sm flex items-center gap-1 border border-indigo-100"
                                                 title="この人に幹事を渡す"
                                             >
-                                                👑幹事に任命
+                                                <svg
+                                                    class="w-3.5 h-3.5"
+                                                    fill="none"
+                                                    stroke="currentColor"
+                                                    viewBox="0 0 24 24"
+                                                    ><path
+                                                        stroke-linecap="round"
+                                                        stroke-linejoin="round"
+                                                        stroke-width="2.5"
+                                                        d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"
+                                                    ></path></svg
+                                                >
+                                                幹事に任命
                                             </button>
                                         {/if}
                                     </div>
@@ -679,16 +1175,86 @@
                                     </div>
 
                                     {#if p.paymentMethod === "PayPay"}
-                                        <input
-                                            type="text"
-                                            bind:value={p.paypayId}
-                                            oninput={saveAndRecalculate}
-                                            disabled={!isHost &&
-                                                p.id !== myParticipantId}
-                                            class="w-full px-3 py-2 border border-gray-200 bg-white rounded-xl focus:ring-2 focus:ring-primary-500 text-xs transition-colors disabled:bg-gray-100 placeholder-gray-400"
-                                            placeholder="PayPay受取リンク または ID"
-                                            title="PayPayアプリの「受け取る」からリンクをコピーして貼り付けてください"
-                                        />
+                                        <div
+                                            id="tutorial-paypay-input"
+                                            class="space-y-2"
+                                        >
+                                            <input
+                                                type="text"
+                                                bind:value={p.paypayId}
+                                                oninput={saveAndRecalculate}
+                                                disabled={!isHost &&
+                                                    p.id !== myParticipantId}
+                                                class="w-full px-3 py-2 border border-gray-200 bg-white rounded-xl focus:ring-2 focus:ring-primary-500 text-xs transition-colors disabled:bg-gray-100 placeholder-gray-400"
+                                                placeholder="PayPay受取リンク または ID"
+                                                title="PayPayアプリの「受け取る」からリンクをコピーして貼り付けてください"
+                                            />
+                                            {#if isHost || p.id === myParticipantId}
+                                                <div
+                                                    class="bg-gray-50 rounded-xl p-3 border border-gray-100 flex flex-col gap-2"
+                                                >
+                                                    <div
+                                                        class="text-xs text-gray-500 font-medium space-y-1"
+                                                    >
+                                                        <p
+                                                            class="font-bold text-gray-600 mb-1.5 flex items-center gap-1"
+                                                        >
+                                                            <svg
+                                                                class="w-3.5 h-3.5"
+                                                                fill="none"
+                                                                stroke="currentColor"
+                                                                viewBox="0 0 24 24"
+                                                                ><path
+                                                                    stroke-linecap="round"
+                                                                    stroke-linejoin="round"
+                                                                    stroke-width="2.5"
+                                                                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                                                                ></path></svg
+                                                            >
+                                                            リンクの取得方法
+                                                        </p>
+                                                        <ul
+                                                            class="space-y-0.5 ml-1"
+                                                        >
+                                                            <li>
+                                                                1.
+                                                                PayPay右下の「アカウント」
+                                                            </li>
+                                                            <li>
+                                                                2.
+                                                                「マイコード」をタップ
+                                                            </li>
+                                                            <li>
+                                                                3.
+                                                                「このページのURLをコピー」
+                                                            </li>
+                                                        </ul>
+                                                    </div>
+                                                    <button
+                                                        onclick={() =>
+                                                            window.open(
+                                                                "paypay://",
+                                                                "_blank",
+                                                            )}
+                                                        class="self-start mt-0.5 flex items-center gap-1.5 px-3 py-1.5 border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 hover:text-gray-800 rounded-lg text-xs font-bold transition-all shadow-sm active:scale-95"
+                                                    >
+                                                        <svg
+                                                            class="w-3.5 h-3.5"
+                                                            fill="none"
+                                                            stroke="currentColor"
+                                                            viewBox="0 0 24 24"
+                                                            ><path
+                                                                stroke-linecap="round"
+                                                                stroke-linejoin="round"
+                                                                stroke-width="2"
+                                                                d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"
+                                                            ></path></svg
+                                                        >
+                                                        PayPayアプリを開く
+                                                    </button>
+                                                </div>
+                                            {/if}
+                                        </div>
                                     {/if}
                                 </div>
                             </div>
@@ -707,331 +1273,45 @@
                             disabled={!isHost}
                             class="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 text-sm font-medium text-gray-700 disabled:opacity-50"
                         >
-                            <option value="none">🎯 丸めない（1円単位）</option>
-                            <option value="nearest">💰 普通に四捨五入</option>
-                            <option value="down">📉 払い・受取りを少なく</option
-                            >
-                            <option value="up">📈 払い・受取りを多く</option>
+                            <option value="none">丸めない（1円単位）</option>
+                            <option value="nearest">普通に四捨五入</option>
+                            <option value="down">払い・受取りを少なく</option>
+                            <option value="up">払い・受取りを多く</option>
                         </select>
                     </div>
                 </section>
             </div>
 
-            <!-- Middle Column: Events (Receipts) -->
-            <div class="xl:col-span-5 space-y-6">
-                <div class="flex items-center justify-between">
-                    <h2
-                        class="text-xl font-bold text-gray-800 flex items-center gap-2"
-                    >
-                        <svg
-                            class="w-6 h-6 text-indigo-500"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                            ><path
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                                stroke-width="2"
-                                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                            ></path></svg
-                        >
-                        レシート・支払い履歴
-                    </h2>
-                    {#if isHost}
-                        <button
-                            onclick={addEvent}
-                            class="px-4 py-2 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 font-bold rounded-xl transition-colors flex items-center gap-2 text-sm shadow-sm"
-                        >
-                            <svg
-                                class="w-4 h-4"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                                ><path
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                    stroke-width="2"
-                                    d="M12 4v16m8-8H4"
-                                ></path></svg
-                            >
-                            追加
-                        </button>
-                    {/if}
-                </div>
-
-                <div class="space-y-5">
-                    {#each events as event (event.id)}
-                        <article
-                            class="bg-white rounded-3xl shadow-sm border border-gray-200 overflow-hidden group"
-                        >
-                            <div
-                                class="p-5 border-b border-gray-100 bg-gray-50/50 flex justify-between items-start gap-4"
-                            >
-                                <div class="flex-1 space-y-3">
-                                    <input
-                                        type="text"
-                                        bind:value={event.title}
-                                        oninput={saveAndRecalculate}
-                                        disabled={!isHost}
-                                        class="w-full px-0 py-1 border-transparent bg-transparent focus:ring-0 text-lg font-bold text-gray-800 placeholder-gray-400 disabled:opacity-80"
-                                        placeholder="何代？ (例: 居酒屋、タクシー)"
-                                    />
-
-                                    <div class="flex items-center gap-3">
-                                        <div class="relative flex-1">
-                                            <span
-                                                class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-bold"
-                                                >¥</span
-                                            >
-                                            <input
-                                                type="number"
-                                                bind:value={event.amount}
-                                                oninput={saveAndRecalculate}
-                                                disabled={!isHost}
-                                                class="w-full pl-8 pr-3 py-2.5 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 text-lg font-black text-gray-900 shadow-sm disabled:bg-gray-50"
-                                                placeholder="0"
-                                            />
-                                        </div>
-                                        <div
-                                            class="flex items-center gap-2 min-w-[120px]"
-                                        >
-                                            <span
-                                                class="text-xs font-bold text-gray-400 uppercase"
-                                                >支払った人</span
-                                            >
-                                            <select
-                                                bind:value={event.payerId}
-                                                onchange={saveAndRecalculate}
-                                                disabled={!isHost}
-                                                class="w-full px-2 py-2.5 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 text-sm font-bold text-gray-700 shadow-sm disabled:bg-gray-50"
-                                            >
-                                                {#each participants as p}
-                                                    <option value={p.id}
-                                                        >{p.name}</option
-                                                    >
-                                                {/each}
-                                            </select>
-                                        </div>
-                                    </div>
-                                </div>
-                                {#if isHost}
-                                    <button
-                                        aria-label="削除"
-                                        onclick={() => removeEvent(event.id)}
-                                        class="text-gray-300 hover:text-red-500 p-2 bg-white rounded-full border border-gray-200 shadow-sm transition-colors opacity-0 group-hover:opacity-100"
-                                    >
-                                        <svg
-                                            class="w-4 h-4"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            viewBox="0 0 24 24"
-                                            ><path
-                                                stroke-linecap="round"
-                                                stroke-linejoin="round"
-                                                stroke-width="2"
-                                                d="M6 18L18 6M6 6l12 12"
-                                            ></path></svg
-                                        >
-                                    </button>
-                                {/if}
-                            </div>
-
-                            <div class="px-5 pb-5">
-                                <details class="group">
-                                    <summary
-                                        class="flex items-center justify-between cursor-pointer list-none text-xs font-bold text-gray-500 uppercase tracking-wider py-3 border-t border-gray-100 mt-2"
-                                    >
-                                        <div class="flex items-center gap-2">
-                                            <span>詳細な割り勘設定を開く</span>
-                                            <svg
-                                                class="w-4 h-4 transform transition-transform group-open:rotate-180"
-                                                fill="none"
-                                                stroke="currentColor"
-                                                viewBox="0 0 24 24"
-                                                ><path
-                                                    stroke-linecap="round"
-                                                    stroke-linejoin="round"
-                                                    stroke-width="2"
-                                                    d="M19 9l-7 7-7-7"
-                                                ></path></svg
-                                            >
-                                        </div>
-                                        <div
-                                            class="flex-1 h-px bg-gray-100 ml-3"
-                                        ></div>
-                                    </summary>
-
-                                    <div class="pt-2 space-y-2">
-                                        {#each participants as part}
-                                            {@const isParticipating =
-                                                event.participations.some(
-                                                    (ep) =>
-                                                        ep.participantId ===
-                                                        part.id,
-                                                )}
-                                            <div
-                                                class="flex items-center justify-between p-3 rounded-xl {isParticipating
-                                                    ? 'bg-white border border-indigo-100 shadow-sm'
-                                                    : 'bg-gray-50 border border-transparent'} transition-all"
-                                            >
-                                                <div
-                                                    class="flex items-center gap-3 w-1/3"
-                                                >
-                                                    <label
-                                                        class="relative inline-flex items-center {isHost
-                                                            ? 'cursor-pointer'
-                                                            : 'cursor-not-allowed'}"
-                                                    >
-                                                        <input
-                                                            type="checkbox"
-                                                            class="sr-only peer"
-                                                            checked={isParticipating}
-                                                            disabled={!isHost}
-                                                            onchange={(e) => {
-                                                                if (
-                                                                    e
-                                                                        .currentTarget
-                                                                        .checked
-                                                                ) {
-                                                                    event.participations.push(
-                                                                        {
-                                                                            participantId:
-                                                                                part.id,
-                                                                            weight: 1,
-                                                                            fixedAdjustment: 0,
-                                                                        },
-                                                                    );
-                                                                } else {
-                                                                    event.participations =
-                                                                        event.participations.filter(
-                                                                            (
-                                                                                ep,
-                                                                            ) =>
-                                                                                ep.participantId !==
-                                                                                part.id,
-                                                                        );
-                                                                }
-                                                                saveAndRecalculate();
-                                                            }}
-                                                        />
-                                                        <div
-                                                            class="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-500 peer-disabled:opacity-50"
-                                                        ></div>
-                                                    </label>
-                                                    <span
-                                                        class="text-sm font-bold {isParticipating
-                                                            ? 'text-gray-800'
-                                                            : 'text-gray-400'} truncate"
-                                                        >{part.name}</span
-                                                    >
-                                                </div>
-
-                                                {#if isParticipating}
-                                                    {@const ep =
-                                                        event.participations.find(
-                                                            (ep) =>
-                                                                ep.participantId ===
-                                                                part.id,
-                                                        )}
-                                                    {#if ep}
-                                                        <div
-                                                            class="flex items-center gap-3 w-2/3 justify-end animate-fade-in"
-                                                        >
-                                                            <div
-                                                                class="flex flex-col"
-                                                            >
-                                                                <label
-                                                                    class="text-[10px] text-gray-500 font-bold mb-0.5"
-                                                                    for="w-{event.id}-{part.id}"
-                                                                    >負担比率</label
-                                                                >
-                                                                <input
-                                                                    id="w-{event.id}-{part.id}"
-                                                                    type="number"
-                                                                    step="0.1"
-                                                                    bind:value={
-                                                                        ep.weight
-                                                                    }
-                                                                    oninput={saveAndRecalculate}
-                                                                    disabled={!isHost}
-                                                                    class="w-16 px-2 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-sm font-bold text-center focus:ring-2 focus:ring-indigo-500 transition-shadow disabled:bg-gray-100"
-                                                                    min="0"
-                                                                />
-                                                            </div>
-                                                            <div
-                                                                class="flex flex-col"
-                                                            >
-                                                                <label
-                                                                    class="text-[10px] text-gray-500 font-bold mb-0.5"
-                                                                    for="f-{event.id}-{part.id}"
-                                                                    >割引・追加金額(円)</label
-                                                                >
-                                                                <input
-                                                                    id="f-{event.id}-{part.id}"
-                                                                    type="number"
-                                                                    bind:value={
-                                                                        ep.fixedAdjustment
-                                                                    }
-                                                                    oninput={saveAndRecalculate}
-                                                                    disabled={!isHost}
-                                                                    class="w-24 px-2 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-sm font-bold text-center focus:ring-2 focus:ring-indigo-500 transition-shadow disabled:bg-gray-100"
-                                                                    placeholder="0"
-                                                                />
-                                                            </div>
-                                                        </div>
-                                                    {/if}
-                                                {/if}
-                                            </div>
-                                        {/each}
-                                    </div>
-                                </details>
-                            </div>
-                        </article>
-                    {/each}
-                    {#if events.length === 0}
-                        <div
-                            class="text-center py-10 bg-white rounded-3xl border border-dashed border-gray-300 text-gray-400"
-                        >
-                            まだレシートがありません。
-                        </div>
-                    {/if}
-                </div>
-
-                {#if isHost}
-                    <div class="pt-4">
-                        <button
-                            onclick={deleteRoom}
-                            class="w-full py-4 bg-red-50 hover:bg-red-100 text-red-600 text-sm font-bold rounded-2xl transition-colors border border-red-100 shadow-sm flex items-center justify-center gap-2"
-                        >
-                            <svg
-                                class="w-5 h-5"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                                ><path
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                    stroke-width="2"
-                                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                                ></path></svg
-                            >
-                            精算を完全に終了する（ルーム削除）
-                        </button>
-                    </div>
-                {/if}
-            </div>
-
-            <!-- Right Column: Results & Settlements -->
-            <div class="xl:col-span-4 space-y-6">
+            <!-- Results & Settlements (Moved directly under members) -->
+            <div class="space-y-6 pt-6">
+                <!-- Receipt removal notice -->
                 <div
-                    class="bg-gradient-to-b from-indigo-900 to-indigo-800 rounded-3xl shadow-xl overflow-hidden border border-indigo-700 text-white sticky top-24"
+                    class="bg-gray-50/80 rounded-2xl p-4 text-gray-500 text-xs text-center border border-gray-100 flex items-center justify-center gap-2 shadow-sm"
+                >
+                    <svg
+                        class="w-4 h-4 text-gray-400"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                        ><path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                        ></path></svg
+                    >
+                    タブ1「注文メモ」の計算結果がここに自動反映されます
+                </div>
+
+                <div
+                    class="bg-white rounded-3xl shadow-[0_4px_20px_rgba(0,0,0,0.04)] overflow-hidden border border-gray-100/80"
                 >
                     <div class="p-6 md:p-8">
                         <h2
-                            class="text-2xl font-bold mb-6 flex items-center gap-3"
+                            class="text-xl font-bold mb-6 flex items-center gap-3 text-gray-800"
                         >
                             <div
-                                class="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-indigo-300"
+                                class="w-10 h-10 rounded-2xl bg-indigo-50 flex items-center justify-center text-indigo-600 shadow-sm border border-indigo-100/50"
                             >
                                 <svg
                                     class="w-5 h-5"
@@ -1041,25 +1321,58 @@
                                     ><path
                                         stroke-linecap="round"
                                         stroke-linejoin="round"
-                                        stroke-width="2"
-                                        d="M13 10V3L4 14h7v7l9-11h-7z"
+                                        stroke-width="2.5"
+                                        d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"
                                     ></path></svg
                                 >
                             </div>
                             最終精算
                         </h2>
 
+                        {#if unpaidCount > 0}
+                            <div
+                                class="bg-red-50 border border-red-100 rounded-2xl p-4 flex items-center gap-4 shadow-sm mb-2"
+                            >
+                                <div
+                                    class="bg-red-100 p-2.5 rounded-xl text-red-600 shadow-sm shrink-0"
+                                >
+                                    <svg
+                                        class="w-5 h-5"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                        ><path
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                            stroke-width="2.5"
+                                            d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                                        ></path></svg
+                                    >
+                                </div>
+                                <div class="flex flex-col">
+                                    <span
+                                        class="text-[#FF0033] font-black text-sm tracking-wide"
+                                        >未払い：残り{unpaidCount}名</span
+                                    >
+                                    <span
+                                        class="text-[#FF0033]/80 text-xs font-bold mt-0.5"
+                                        >送金後に「未完了」ボタンをタップして消し込めます</span
+                                    >
+                                </div>
+                            </div>
+                        {/if}
+
                         <div class="space-y-6">
                             <div>
                                 <h3
-                                    class="text-xs font-bold text-indigo-300 mb-3 uppercase tracking-wider"
+                                    class="text-xs font-bold text-gray-400 mb-3 uppercase tracking-wider"
                                 >
                                     誰が誰に払うか
                                 </h3>
                                 <div class="space-y-3">
                                     {#if transactions.length === 0}
                                         <div
-                                            class="bg-white/5 rounded-xl p-6 text-center text-indigo-200 text-sm border border-white/10"
+                                            class="bg-gray-50/50 rounded-2xl p-6 text-center text-gray-400 text-sm border border-gray-100"
                                         >
                                             精算が必要なトランザクションはありません。<br
                                             />（みんなぴったりです！）
@@ -1067,16 +1380,16 @@
                                     {:else}
                                         {#each transactions as t}
                                             <div
-                                                class="bg-white rounded-2xl p-4 shadow-lg text-gray-900 border border-white/20 transform transition hover:-translate-y-1"
+                                                class="bg-white rounded-2xl p-5 shadow-[0_2px_10px_rgba(0,0,0,0.03)] border border-gray-100/80 transform transition hover:-translate-y-1"
                                             >
                                                 <div
-                                                    class="flex items-center justify-between mb-3"
+                                                    class="flex items-center justify-between mb-4"
                                                 >
                                                     <div
                                                         class="flex items-center gap-3 flex-1 overflow-hidden"
                                                     >
                                                         <div
-                                                            class="font-bold truncate text-sm"
+                                                            class="font-black text-gray-800 truncate text-base"
                                                         >
                                                             {t.fromName}
                                                         </div>
@@ -1097,14 +1410,14 @@
                                                             >
                                                         </div>
                                                         <div
-                                                            class="font-bold text-gray-600 truncate text-sm"
+                                                            class="font-bold text-gray-600 truncate text-base"
                                                         >
                                                             {t.toName}
                                                         </div>
                                                     </div>
                                                 </div>
                                                 <div
-                                                    class="flex items-end justify-between border-b border-gray-100 pb-3 mb-3"
+                                                    class="flex items-end justify-between border-b border-gray-100 pb-4 mb-4"
                                                 >
                                                     <span
                                                         class="text-[10px] font-black px-2.5 py-1 rounded-lg uppercase tracking-wider {t.method ===
@@ -1115,7 +1428,7 @@
                                                         {t.method}
                                                     </span>
                                                     <span
-                                                        class="text-2xl font-black tracking-tight"
+                                                        class="text-4xl md:text-5xl font-black text-gray-800 tracking-tighter"
                                                         >¥{t.amount.toLocaleString()}</span
                                                     >
                                                 </div>
@@ -1131,14 +1444,12 @@
                                                             ? t.toPaypayId
                                                             : `paypay://send?userNum=${t.toPaypayId}&amount=${t.amount}`}
                                                     <div class="mt-2">
-                                                        <a
-                                                            href={paypayLink}
-                                                            target="_blank"
-                                                            rel="noopener noreferrer"
+                                                        <button
                                                             onclick={() =>
                                                                 handlePayPayClick(
                                                                     t.fromId,
                                                                     t.amount,
+                                                                    paypayLink,
                                                                 )}
                                                             class="w-full flex items-center justify-center gap-2 px-4 py-3 bg-[#FF0033] text-white text-sm font-bold rounded-xl hover:bg-[#E6002E] transition-all shadow-md shadow-[#FF0033]/30 active:scale-95"
                                                         >
@@ -1155,7 +1466,7 @@
                                                                 ></path></svg
                                                             >
                                                             PayPayで送金する
-                                                        </a>
+                                                        </button>
                                                     </div>
                                                 {/if}
                                             </div>
@@ -1168,19 +1479,32 @@
                                         )}
                                         {#if host}
                                             <div
-                                                class="mt-2 p-4 bg-indigo-900/50 rounded-xl border border-indigo-400/30 flex items-center justify-center gap-2 shadow-sm"
+                                                class="mt-4 p-4 bg-indigo-50/50 rounded-2xl border border-indigo-100/50 flex items-center justify-center gap-3 shadow-sm"
                                             >
-                                                <div class="text-xl">✨</div>
+                                                <div class="text-indigo-400">
+                                                    <svg
+                                                        class="w-5 h-5"
+                                                        fill="none"
+                                                        stroke="currentColor"
+                                                        viewBox="0 0 24 24"
+                                                        ><path
+                                                            stroke-linecap="round"
+                                                            stroke-linejoin="round"
+                                                            stroke-width="2"
+                                                            d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"
+                                                        ></path></svg
+                                                    >
+                                                </div>
                                                 <div
-                                                    class="text-xs font-bold text-indigo-100 leading-relaxed text-center"
+                                                    class="text-xs font-bold text-indigo-700 leading-relaxed text-center"
                                                 >
-                                                    ※幹事（{host.name}）が計
+                                                    幹事（{host.name}）が計
                                                     <span
-                                                        class="text-emerald-400 text-sm"
-                                                        >{Math.round(
+                                                        class="text-indigo-900 text-sm mx-0.5"
+                                                        >¥{Math.round(
                                                             hostAbsorbedAmount,
-                                                        )}円</span
-                                                    > の端数を負担してくれました！
+                                                        ).toLocaleString()}</span
+                                                    > の端数を被ってくれています
                                                 </div>
                                             </div>
                                         {/if}
@@ -1188,9 +1512,9 @@
                                 </div>
                             </div>
 
-                            <div class="pt-6 border-t border-indigo-700/50">
+                            <div class="pt-8 border-t border-gray-100">
                                 <h3
-                                    class="text-xs font-bold text-indigo-300 mb-4 uppercase tracking-wider"
+                                    class="text-xs font-bold text-gray-400 mb-4 uppercase tracking-wider"
                                 >
                                     個人のトータル収支
                                 </h3>
@@ -1199,27 +1523,27 @@
                                 >
                                     {#each balances as r}
                                         <div
-                                            class="bg-indigo-800/50 p-3 rounded-xl border border-indigo-700/50 flex flex-col items-center text-center relative {r.participantId ===
+                                            class="bg-gray-50/80 p-4 rounded-2xl flex flex-col items-center text-center relative border transition-all {r.participantId ===
                                             myParticipantId
-                                                ? 'ring-2 ring-indigo-400 shadow-lg shadow-indigo-500/50'
-                                                : ''}"
+                                                ? 'border-indigo-200 shadow-sm shadow-indigo-100/50 bg-indigo-50/30'
+                                                : 'border-transparent'}"
                                         >
                                             {#if r.participantId === myParticipantId}
                                                 <span
-                                                    class="absolute -top-2 bg-indigo-500 text-white text-[9px] font-black px-2 py-0.5 rounded-full z-10"
+                                                    class="absolute -top-2.5 bg-indigo-500 text-white text-[9px] font-black px-2.5 py-0.5 rounded-full z-10 shadow-sm"
                                                     >YOU</span
                                                 >
                                             {/if}
                                             <span
-                                                class="text-xs font-medium text-indigo-200 mb-1 w-full truncate"
+                                                class="text-xs font-bold text-gray-500 mb-1.5 w-full truncate"
                                                 >{r.name}</span
                                             >
                                             <span
-                                                class="text-lg font-bold {r.roundedBalance >
+                                                class="text-xl font-black tracking-tight {r.roundedBalance >
                                                 0
-                                                    ? 'text-emerald-400'
+                                                    ? 'text-emerald-500'
                                                     : r.roundedBalance < 0
-                                                      ? 'text-red-400'
+                                                      ? 'text-gray-800'
                                                       : 'text-gray-400'}"
                                             >
                                                 {r.roundedBalance > 0
@@ -1227,7 +1551,7 @@
                                                     : ""}{r.roundedBalance.toLocaleString()}
                                             </span>
                                             <span
-                                                class="text-[9px] mt-1 text-indigo-400/70"
+                                                class="text-[10px] mt-1 font-bold text-gray-400"
                                                 >{r.paymentMethod}</span
                                             >
 
@@ -1239,15 +1563,41 @@
                                                     )}
                                                 disabled={r.participantId !==
                                                     myParticipantId && !isHost}
-                                                class="mt-3 w-full py-1.5 text-xs font-bold rounded-lg transition-colors border {settlements[
+                                                class="mt-4 w-full py-2.5 text-xs font-black rounded-xl transition-all flex items-center justify-center gap-1.5 {settlements[
                                                     r.participantId
                                                 ]
-                                                    ? 'bg-emerald-500 text-white border-emerald-400'
-                                                    : 'bg-white/10 text-indigo-200 border-white/20 hover:bg-white/20 disabled:opacity-50 disabled:hover:bg-white/10'}"
+                                                    ? 'bg-emerald-500 text-white shadow-sm hover:bg-emerald-600'
+                                                    : 'bg-white text-gray-400 border border-gray-200 shadow-sm hover:bg-gray-50 hover:text-gray-600 disabled:opacity-50 disabled:hover:bg-white disabled:shadow-none'}"
                                             >
-                                                {settlements[r.participantId]
-                                                    ? "✅ 支払済"
-                                                    : "未完了"}
+                                                {#if settlements[r.participantId]}
+                                                    <svg
+                                                        class="w-3.5 h-3.5"
+                                                        fill="none"
+                                                        stroke="currentColor"
+                                                        viewBox="0 0 24 24"
+                                                        ><path
+                                                            stroke-linecap="round"
+                                                            stroke-linejoin="round"
+                                                            stroke-width="3"
+                                                            d="M5 13l4 4L19 7"
+                                                        ></path></svg
+                                                    >
+                                                    支払済
+                                                {:else}
+                                                    <svg
+                                                        class="w-3.5 h-3.5 opacity-70"
+                                                        fill="none"
+                                                        stroke="currentColor"
+                                                        viewBox="0 0 24 24"
+                                                        ><path
+                                                            stroke-linecap="round"
+                                                            stroke-linejoin="round"
+                                                            stroke-width="2"
+                                                            d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                                                        ></path></svg
+                                                    >
+                                                    未完了
+                                                {/if}
                                             </button>
                                         </div>
                                     {/each}
@@ -1257,6 +1607,29 @@
                     </div>
                 </div>
             </div>
+
+            {#if isHost}
+                <div class="pt-8 mb-8">
+                    <button
+                        onclick={deleteRoom}
+                        class="w-full py-4 bg-red-50 hover:bg-red-100 text-red-600 text-sm font-bold rounded-2xl transition-colors border border-red-100 shadow-sm flex items-center justify-center gap-2"
+                    >
+                        <svg
+                            class="w-5 h-5"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                            ><path
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                stroke-width="2"
+                                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                            ></path></svg
+                        >
+                        精算を完全に終了する（ルーム削除）
+                    </button>
+                </div>
+            {/if}
         </div>
     </div>
 </main>
