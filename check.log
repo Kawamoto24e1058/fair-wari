@@ -1,0 +1,117 @@
+Loading svelte-check in workspace: c:\Users\kharu\Project\fair-wari
+Getting Svelte diagnostics...
+
+c:\Users\kharu\Project\fair-wari\[32msrc\routes\room\[roomId]\+page.svelte[39m:419:37
+[33mWarn[39m: Buttons and links should either contain text or have an `aria-label`, `aria-labelledby` or `title` attribute
+https://svelte.dev/e/a11y_consider_explicit_label (svelte)
+[36m                                {#if isHost}
+                                    [35m<button
+                                        onclick={() => removeParticipant(p.id)}
+                                        class="absolute -top-2 -right-2 bg-white border border-gray-200 text-gray-400 hover:text-red-500 rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
+                                    >
+                                        <svg
+                                            class="w-4 h-4"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            viewBox="0 0 24 24"
+                                            ><path
+                                                stroke-linecap="round"
+                                                stroke-linejoin="round"
+                                                stroke-width="2"
+                                                d="M6 18L18 6M6 6l12 12"
+                                            ></path></svg
+                                        >
+                                    </button>[36m
+                                {/if}[39m
+
+c:\Users\kharu\Project\fair-wari\[32msrc\routes\room\[roomId]\+page.svelte[39m:613:37
+[33mWarn[39m: Buttons and links should either contain text or have an `aria-label`, `aria-labelledby` or `title` attribute
+https://svelte.dev/e/a11y_consider_explicit_label (svelte)
+[36m                                {#if isHost}
+                                    [35m<button
+                                        onclick={() => removeEvent(event.id)}
+                                        class="text-gray-300 hover:text-red-500 p-2 bg-white rounded-full border border-gray-200 shadow-sm transition-colors opacity-0 group-hover:opacity-100"
+                                    >
+                                        <svg
+                                            class="w-4 h-4"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            viewBox="0 0 24 24"
+                                            ><path
+                                                stroke-linecap="round"
+                                                stroke-linejoin="round"
+                                                stroke-width="2"
+                                                d="M6 18L18 6M6 6l12 12"
+                                            ></path></svg
+                                        >
+                                    </button>[36m
+                                {/if}[39m
+
+c:\Users\kharu\Project\fair-wari\[32msrc\routes\room\[roomId]\+page.svelte[39m:48:25
+[31mError[39m: No overload matches this call.
+  Overload 1 of 3, '(firestore: Firestore, path: string, ...pathSegments: string[]): DocumentReference<DocumentData, DocumentData>', gave the following error.
+    Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+      Type 'undefined' is not assignable to type 'string'.
+  Overload 2 of 3, '(reference: CollectionReference<unknown, DocumentData>, path?: string | undefined, ...pathSegments: string[]): DocumentReference<unknown, DocumentData>', gave the following error.
+    Argument of type 'Firestore' is not assignable to parameter of type 'CollectionReference<unknown, DocumentData>'.
+      Type 'Firestore' is missing the following properties from type 'CollectionReference<unknown, DocumentData>': id, path, parent, withConverter, and 2 more.
+  Overload 3 of 3, '(reference: DocumentReference<unknown, DocumentData>, path: string, ...pathSegments: string[]): DocumentReference<DocumentData, DocumentData>', gave the following error.
+    Argument of type 'Firestore' is not assignable to parameter of type 'DocumentReference<unknown, DocumentData>'.
+      Type 'Firestore' is missing the following properties from type 'DocumentReference<unknown, DocumentData>': converter, firestore, id, path, and 2 more. (ts)
+[36m
+        const roomRef = [35mdoc[36m(db, "rooms", roomId);[39m
+
+c:\Users\kharu\Project\fair-wari\[32msrc\routes\room\[roomId]\+page.svelte[39m:88:25
+[31mError[39m: No overload matches this call.
+  Overload 1 of 3, '(firestore: Firestore, path: string, ...pathSegments: string[]): DocumentReference<DocumentData, DocumentData>', gave the following error.
+    Argument of type 'string | undefined' is not assignable to parameter of type 'string'.
+      Type 'undefined' is not assignable to type 'string'.
+  Overload 2 of 3, '(reference: CollectionReference<unknown, DocumentData>, path?: string | undefined, ...pathSegments: string[]): DocumentReference<unknown, DocumentData>', gave the following error.
+    Argument of type 'Firestore' is not assignable to parameter of type 'CollectionReference<unknown, DocumentData>'.
+      Type 'Firestore' is missing the following properties from type 'CollectionReference<unknown, DocumentData>': id, path, parent, withConverter, and 2 more.
+  Overload 3 of 3, '(reference: DocumentReference<unknown, DocumentData>, path: string, ...pathSegments: string[]): DocumentReference<DocumentData, DocumentData>', gave the following error.
+    Argument of type 'Firestore' is not assignable to parameter of type 'DocumentReference<unknown, DocumentData>'.
+      Type 'Firestore' is missing the following properties from type 'DocumentReference<unknown, DocumentData>': converter, firestore, id, path, and 2 more. (ts)
+[36m        if (!isInitialized) return;
+        const roomRef = [35mdoc[36m(db, "rooms", roomId);
+        await updateDoc(roomRef, {[39m
+
+c:\Users\kharu\Project\fair-wari\[32msrc\routes\room\[roomId]\+page.svelte[39m:935:163
+[31mError[39m: Property 'id' does not exist on type 'BalanceResult'. (ts)
+[36m                                        <div
+                                            class="bg-indigo-800/50 p-3 rounded-xl border border-indigo-700/50 flex flex-col items-center text-center relative {r.[35mid[36m ===
+                                            myParticipantId[39m
+
+c:\Users\kharu\Project\fair-wari\[32msrc\routes\room\[roomId]\+page.svelte[39m:940:52
+[31mError[39m: Property 'id' does not exist on type 'BalanceResult'. (ts)
+[36m                                        >
+                                            {#if r.[35mid[36m === myParticipantId}
+                                                <span[39m
+
+c:\Users\kharu\Project\fair-wari\[32msrc\routes\room\[roomId]\+page.svelte[39m:970:72
+[31mError[39m: Property 'id' does not exist on type 'BalanceResult'. (ts)
+[36m                                                onclick={() =>
+                                                    toggleSettlement(r.[35mid[36m)}
+                                                disabled={r.id !==[39m
+
+c:\Users\kharu\Project\fair-wari\[32msrc\routes\room\[roomId]\+page.svelte[39m:971:61
+[31mError[39m: Property 'id' does not exist on type 'BalanceResult'. (ts)
+[36m                                                    toggleSettlement(r.id)}
+                                                disabled={r.[35mid[36m !==
+                                                    myParticipantId && !isHost}[39m
+
+c:\Users\kharu\Project\fair-wari\[32msrc\routes\room\[roomId]\+page.svelte[39m:974:55
+[31mError[39m: Property 'id' does not exist on type 'BalanceResult'. (ts)
+[36m                                                class="mt-3 w-full py-1.5 text-xs font-bold rounded-lg transition-colors border {settlements[
+                                                    r.[35mid[36m
+                                                ][39m
+
+c:\Users\kharu\Project\fair-wari\[32msrc\routes\room\[roomId]\+page.svelte[39m:979:64
+[31mError[39m: Property 'id' does not exist on type 'BalanceResult'. (ts)
+[36m                                            >
+                                                {settlements[r.[35mid[36m]
+                                                    ? "✅ 支払済"[39m
+
+====================================
+[31msvelte-check found 8 errors and 2 warnings in 1 file
+[39m

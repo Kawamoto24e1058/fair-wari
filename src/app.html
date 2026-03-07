@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1.0, user-scalable=no" />
+		<link rel="manifest" href="/manifest.json" />
+		<link rel="icon" href="/icon.svg" type="image/svg+xml" />
+		<link rel="apple-touch-icon" href="/icon.svg" />
+		<meta name="theme-color" content="#4F46E5" />
+
+		<!-- OGP Tags -->
+		<meta property="og:title" content="最強の割り勘アプリ" />
+		<meta property="og:description" content="リアルタイムで同期する、最強の割り勘・精算アプリ！" />
+		<meta property="og:type" content="website" />
+		<meta property="og:image" content="/icon.svg" />
+		
+		<script>
+			if ('serviceWorker' in navigator) {
+				navigator.serviceWorker.register('/sw.js').catch(err => console.error(err));
+			}
+		</script>
+		%sveltekit.head%
+	</head>
+	<body data-sveltekit-preload-data="hover">
+		<div style="display: contents">%sveltekit.body%</div>
+	</body>
+</html>
