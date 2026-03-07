@@ -101,11 +101,12 @@
                         isHost = data.hostId === myParticipantId;
                         localStorage.setItem(
                             `room_${roomId}_identity`,
-                        JSON.stringify({
-                            participantId: myParticipantId,
-                            isHost: isHost,
-                        }),
-                    );
+                            JSON.stringify({
+                                participantId: myParticipantId,
+                                isHost: isHost,
+                            }),
+                        );
+                    }
                 }
                 isInitialized = true;
                 updateCalculation();
@@ -134,7 +135,12 @@
 
     function updateCalculation() {
         if (!isInitialized) return;
-        const state: AppState = { participants, events, roundMode, hostId: currentHostId || undefined };
+        const state: AppState = {
+            participants,
+            events,
+            roundMode,
+            hostId: currentHostId || undefined,
+        };
         const res = calculateNetBalances(state);
         balances = res.balances;
         transactions = res.transactions;
