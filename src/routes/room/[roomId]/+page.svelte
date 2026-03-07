@@ -1109,16 +1109,16 @@
                                                 </div>
 
                                                 {#if t.method === "PayPay" && t.toPaypayId}
+                                                    {@const paypayLink =
+                                                        t.toPaypayId.startsWith(
+                                                            "http",
+                                                        ) ||
+                                                        t.toPaypayId.startsWith(
+                                                            "paypay://",
+                                                        )
+                                                            ? t.toPaypayId
+                                                            : `paypay://send?userNum=${t.toPaypayId}&amount=${t.amount}`}
                                                     <div class="mt-2">
-                                                        {@const paypayLink =
-                                                            t.toPaypayId.startsWith(
-                                                                "http",
-                                                            ) ||
-                                                            t.toPaypayId.startsWith(
-                                                                "paypay://",
-                                                            )
-                                                                ? t.toPaypayId
-                                                                : `paypay://send?userNum=${t.toPaypayId}&amount=${t.amount}`}
                                                         <a
                                                             href={paypayLink}
                                                             target="_blank"
