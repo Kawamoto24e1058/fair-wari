@@ -105,9 +105,13 @@
                   )
                 : null;
 
+            const expirationDate = new Date();
+            expirationDate.setHours(expirationDate.getHours() + 1);
+
             await setDoc(roomRef, {
                 id: roomId,
                 createdAt: serverTimestamp(),
+                expiresAt: expirationDate,
                 status: "active",
                 location: locationObj,
                 state: {

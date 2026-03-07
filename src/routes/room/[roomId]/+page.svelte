@@ -146,9 +146,15 @@
     async function saveStateToFirebase(extraData = {}) {
         if (!isInitialized) return;
         const roomRef = doc(db, "rooms", roomId as string);
+
+        // Calculate expiration: Now + 1 hour
+        const expirationDate = new Date();
+        expirationDate.setHours(expirationDate.getHours() + 1);
+
         await updateDoc(roomRef, {
             state: { participants, events, roundMode },
             settlements,
+            expiresAt: expirationDate, // Rolling TTL update
             ...extraData,
         });
     }
@@ -169,10 +175,8 @@
 
     function saveAndRecalculate() {
         updateCalculation();
-        // Since we want immediate UI feedback and fast saves
-        if (isHost) {
-            saveStateToFirebase();
-        }
+        // Trigger save (and TTL extension) for any user activity
+        saveStateToFirebase();
     }
 
     function joinAsNewParticipant() {
