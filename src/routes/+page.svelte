@@ -212,7 +212,7 @@
 </script>
 
 <svelte:head>
-    <title>最強の割り勘アプリ - トップ</title>
+    <title>FairPay - トップ</title>
 </svelte:head>
 
 <main
@@ -242,7 +242,7 @@
         <h1
             class="text-3xl font-extrabold text-gray-900 mb-3 tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-primary-600 to-indigo-600 text-center"
         >
-            最強の割り勘アプリ
+            FairPay
         </h1>
         <p class="text-gray-500 mb-8 font-medium text-center text-sm">
             URL共有やGPS、オリジナルの合言葉で<br />

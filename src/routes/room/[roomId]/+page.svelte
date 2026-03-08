@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { goto } from "$app/navigation";
     import {
         calculateNetBalances,
         type Participant,
@@ -261,6 +262,18 @@
         await deleteDoc(roomRef);
     }
 
+    async function leaveRoom() {
+        if (!confirm("ルームから退出しますか？")) return;
+
+        // セッション情報をクリア
+        localStorage.removeItem(`room_${roomId}_identity`);
+        myParticipantId = null;
+        isHost = false;
+
+        // トップページへ
+        await goto("/");
+    }
+
     function showToastNotification(message: string) {
         toastMessage = message;
         showToast = true;
@@ -468,7 +481,7 @@
             steps: [
                 {
                     popover: {
-                        title: "最強の割り勘アプリへようこそ",
+                        title: "FairPayへようこそ",
                         description:
                             "面倒な文字入力は一切不要。テンキーで金額を打つだけで、誰がいくら払うか自動で計算します。",
                         side: "over",
@@ -515,7 +528,7 @@
 </script>
 
 <svelte:head>
-    <title>最強の割り勘アプリ - ルーム</title>
+    <title>FairPay - ルーム</title>
     <link
         rel="stylesheet"
         href="https://cdn.jsdelivr.net/npm/driver.js@1.0.1/dist/driver.css"
@@ -825,7 +838,7 @@
                 <h1
                     class="text-2xl md:text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-primary-600 to-indigo-600 tracking-tight flex items-center gap-2"
                 >
-                    最強の割り勘アプリ
+                    FairPay
                     {#if isHost}
                         <span
                             class="px-2 py-0.5 bg-indigo-100 text-indigo-700 text-[10px] font-black uppercase rounded-lg shadow-sm"
@@ -863,6 +876,26 @@
                 </p>
             </div>
             <div class="flex items-center gap-2">
+                <button
+                    onclick={leaveRoom}
+                    class="p-2 text-gray-400 hover:text-red-500 transition-colors flex items-center gap-1 group"
+                    title="ルームを退出"
+                >
+                    <svg
+                        class="w-5 h-5 group-hover:-translate-x-1 transition-transform"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                    >
+                        <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            stroke-width="2"
+                            d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
+                        />
+                    </svg>
+                    <span class="text-xs font-bold hidden sm:inline">退出</span>
+                </button>
                 <button
                     onclick={generateQrCode}
                     class="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 px-3 py-2 sm:px-4 rounded-xl text-sm font-bold shadow-sm transition-colors flex items-center gap-2"
