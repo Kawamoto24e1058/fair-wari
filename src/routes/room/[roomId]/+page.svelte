@@ -1159,23 +1159,24 @@
             : 'hidden'} max-w-3xl mx-auto px-4 space-y-8 mt-6 pb-20"
     >
         {#if isHost}
+            {@const totalExpected = transactions.reduce(
+                (acc, t) => acc + t.amount,
+                0,
+            )}
+            {@const currentCollected = transactions
+                .filter((t) => settlements[t.fromId])
+                .reduce((acc, t) => acc + t.amount, 0)}
+            {@const totalGuests = transactions.length}
+            {@const paidGuests = totalGuests - unpaidCount}
+            {@const progressPercent =
+                totalExpected > 0
+                    ? (currentCollected / totalExpected) * 100
+                    : 0}
+            {@const isComplete = totalGuests > 0 && unpaidCount === 0}
+
             <!-- HOST VIEW: Collection Dashboard -->
             <section class="space-y-6 animate-fade-in">
                 <!-- Dashboard Summary Card (Enhanced Progress) -->
-                {@const totalExpected = transactions.reduce(
-                    (acc, t) => acc + t.amount,
-                    0,
-                )}
-                {@const currentCollected = transactions
-                    .filter((t) => settlements[t.fromId])
-                    .reduce((acc, t) => acc + t.amount, 0)}
-                {@const totalGuests = transactions.length}
-                {@const paidGuests = totalGuests - unpaidCount}
-                {@const progressPercent =
-                    totalExpected > 0
-                        ? (currentCollected / totalExpected) * 100
-                        : 0}
-                {@const isComplete = totalGuests > 0 && unpaidCount === 0}
 
                 <div
                     class="bg-white rounded-[2.5rem] shadow-[0_20px_60px_rgba(0,0,0,0.05)] border border-gray-100 p-8 space-y-8"
@@ -1514,13 +1515,13 @@
                 </div>
             </section>
         {:else}
+            {@const myTransaction = transactions.find(
+                (t) => t.fromId === myParticipantId,
+            )}
+            {@const host = participants.find((p) => p.id === currentHostId)}
+
             <!-- GUEST VIEW: Payment Mission Card -->
             <section class="animate-fade-in space-y-8 py-4">
-                {@const myTransaction = transactions.find(
-                    (t) => t.fromId === myParticipantId,
-                )}
-                {@const host = participants.find((p) => p.id === currentHostId)}
-
                 {#if myTransaction}
                     <div
                         class="bg-white rounded-[3rem] shadow-[0_30px_70px_rgba(0,0,0,0.08)] border border-gray-100 p-10 flex flex-col items-center text-center gap-8"
