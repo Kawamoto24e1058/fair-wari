@@ -366,31 +366,6 @@
         );
     }
 
-    function getParticipantBurden(pid: string) {
-        let burden = 0;
-        for (const e of events) {
-            const sumWeights = e.participations.reduce(
-                (s, p) => s + p.weight,
-                0,
-            );
-            const sumFixed = e.participations.reduce(
-                (s, p) => s + p.fixedAdjustment,
-                0,
-            );
-            const ep = e.participations.find((p) => p.participantId === pid);
-            if (ep) {
-                if (sumWeights > 0) {
-                    burden +=
-                        (e.amount - sumFixed) * (ep.weight / sumWeights) +
-                        ep.fixedAdjustment;
-                } else {
-                    burden += ep.fixedAdjustment;
-                }
-            }
-        }
-        return Math.round(burden);
-    }
-
     async function generateQrCode() {
         try {
             qrDataUrl = await QRCode.toDataURL(window.location.href, {
@@ -984,348 +959,19 @@
     <div
         class="{activeTab === 'calc'
             ? 'block'
-            : 'hidden'} max-w-3xl mx-auto px-4 relative min-h-screen"
+            : 'hidden'} max-w-7xl mx-auto px-4 relative"
     >
-        <section
-            class="bg-white rounded-3xl shadow-sm border border-gray-200 p-6 mb-80"
-        >
-            <h2
-                class="text-xl font-bold mb-5 flex items-center justify-between"
-            >
-                <span class="text-gray-800">メンバーの現在負担額</span>
-                <span
-                    class="text-sm font-medium text-gray-500 bg-gray-100 px-3 py-1 rounded-full"
-                    >合計: ¥{events
-                        .reduce((acc, ev) => acc + ev.amount, 0)
-                        .toLocaleString()}</span
-                >
-            </h2>
-            <div class="space-y-3">
-                {#each balances as r}
-                    <div
-                        class="bg-gray-50 border border-gray-100 rounded-2xl p-4 flex justify-between items-center relative transition-shadow"
-                    >
-                        {#if r.participantId === myParticipantId}
-                            <div
-                                class="absolute -top-2 left-4 bg-indigo-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow-sm z-10 w-fit"
-                            >
-                                YOURS
-                            </div>
-                        {/if}
-                        <div class="flex items-center gap-3">
-                            <div
-                                class="w-10 h-10 rounded-full bg-white flex items-center justify-center font-bold text-gray-400 shadow-sm border border-gray-200 text-sm"
-                            >
-                                {r.name.substring(0, 2)}
-                            </div>
-                            <div class="font-bold text-gray-800 text-base">
-                                {r.name}
-                            </div>
-                        </div>
-                        <div class="text-right flex-shrink-0">
-                            <div
-                                class="text-[10px] text-gray-400 font-bold mb-0.5 uppercase tracking-wide"
-                            >
-                                負担額
-                            </div>
-                            <div
-                                class="text-xl font-black text-gray-900 border-b-2 border-indigo-200 inline-block min-w-[80px]"
-                            >
-                                ¥{getParticipantBurden(
-                                    r.participantId,
-                                ).toLocaleString()}
-                            </div>
-                        </div>
-                    </div>
-                {/each}
-                {#if balances.length === 0}
-                    <p class="text-sm text-gray-400 text-center py-8">
-                        まだメンバーがいません
-                    </p>
-                {/if}
-            </div>
-        </section>
-
-        <!-- Fixed Numpad -->
         <div
-            class="fixed bottom-0 left-0 right-0 bg-white shadow-[0_-10px_40px_rgba(0,0,0,0.08)] rounded-t-[2rem] border-t border-gray-100 p-5 z-40 pb-6"
+            class="grid grid-cols-1 md:grid-cols-2 gap-8 items-start pt-4 mb-20 md:mb-10"
         >
-            <div id="tutorial-numpad" class="max-w-3xl mx-auto">
-                <!-- Display -->
-                <div
-                    class="bg-gray-50 rounded-2xl p-4 mb-4 text-right overflow-hidden border border-gray-200 shadow-inner flex justify-between items-center"
-                >
-                    <span class="text-gray-400 font-bold text-sm">入力金額</span
-                    >
-                    <span
-                        class="text-4xl font-black text-gray-800 tracking-tighter truncate leading-none"
-                        >¥{currentAmount
-                            ? parseInt(currentAmount, 10).toLocaleString()
-                            : "0"}</span
-                    >
-                </div>
-
-                <!-- Action Buttons -->
-                <div class="grid grid-cols-2 gap-3 mb-4">
-                    <button
-                        onclick={addAmountToMyself}
-                        class="bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-bold py-3.5 rounded-2xl flex flex-col items-center justify-center gap-1.5 active:scale-95 transition-all text-sm shadow-sm group"
-                    >
-                        <svg
-                            class="w-6 h-6 text-emerald-500 mb-0.5 group-active:-translate-y-1 transition-transform"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                            ><path
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                                stroke-width="2.5"
-                                d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
-                            ></path></svg
-                        >
-                        自分の支払いに
-                    </button>
-                    <button
-                        onclick={addAmountToAll}
-                        class="bg-indigo-50 text-indigo-700 hover:bg-indigo-100 font-bold py-3.5 rounded-2xl flex flex-col items-center justify-center gap-1.5 active:scale-95 transition-all text-sm shadow-sm group"
-                    >
-                        <svg
-                            class="w-6 h-6 text-indigo-500 mb-0.5 group-active:-translate-y-1 transition-transform"
-                            fill="none"
-                            stroke="currentColor"
-                            viewBox="0 0 24 24"
-                            ><path
-                                stroke-linecap="round"
-                                stroke-linejoin="round"
-                                stroke-width="2.5"
-                                d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"
-                            ></path></svg
-                        >
-                        全員で割る
-                    </button>
-                </div>
-
-                <!-- Keys -->
-                <div class="grid grid-cols-3 gap-2">
-                    {#each ["7", "8", "9", "4", "5", "6", "1", "2", "3", "00", "0", "C"] as key}
-                        <button
-                            onclick={() => handleNumpad(key)}
-                            class="{key === 'C'
-                                ? 'bg-red-50 text-red-500 hover:bg-red-100 border-red-100'
-                                : 'bg-white text-gray-800 hover:bg-gray-50 border-gray-100'} font-black text-2xl py-4 rounded-2xl shadow-sm border active:scale-95 transition-all"
-                            >{key}</button
-                        >
-                    {/each}
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- TAB 2: SETTLE -->
-    <div
-        class="{activeTab === 'settle'
-            ? 'block'
-            : 'hidden'} max-w-3xl mx-auto px-4 space-y-6 mt-4"
-    >
-        <!-- Members Settings (former Left Column) -->
-        <div class="space-y-6">
-            <div class="space-y-6">
+            <!-- Right Column: Burden List (Order 1 on mobile) -->
+            <div class="order-1 md:order-2 space-y-6">
                 <section
-                    class="bg-white rounded-3xl shadow-sm border border-gray-200 p-6 {isHost
-                        ? ''
-                        : 'opacity-80'}"
+                    class="bg-white rounded-3xl shadow-[0_4px_20px_rgba(0,0,0,0.04)] border border-gray-100 p-6 md:p-8"
                 >
-                    <div
-                        class="flex items-center justify-between mb-5 border-b border-gray-100 pb-3"
-                    >
+                    <div class="flex items-center justify-between mb-6">
                         <h2
-                            class="text-lg font-bold text-gray-800 flex items-center gap-2"
-                        >
-                            <svg
-                                class="w-5 h-5 text-gray-400"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                                ><path
-                                    stroke-linecap="round"
-                                    stroke-linejoin="round"
-                                    stroke-width="2"
-                                    d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"
-                                ></path></svg
-                            >
-                            メンバー
-                        </h2>
-                        {#if isHost}
-                            <button
-                                onclick={addParticipant}
-                                class="text-primary-600 hover:text-primary-700 bg-primary-50 p-1.5 rounded-lg transition-colors"
-                                title="追加"
-                            >
-                                <svg
-                                    class="w-5 h-5"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    viewBox="0 0 24 24"
-                                    ><path
-                                        stroke-linecap="round"
-                                        stroke-linejoin="round"
-                                        stroke-width="2"
-                                        d="M12 4v16m8-8H4"
-                                    ></path></svg
-                                >
-                            </button>
-                        {/if}
-                    </div>
-
-                    <div class="space-y-4">
-                        {#each participants as p (p.id)}
-                            <div
-                                class="bg-gray-50 border {p.id ===
-                                myParticipantId
-                                    ? 'border-indigo-300 shadow-sm bg-indigo-50/30'
-                                    : 'border-gray-100'} rounded-2xl p-4 relative group"
-                            >
-                                {#if isHost}
-                                    <button
-                                        aria-label="削除"
-                                        onclick={() => removeParticipant(p.id)}
-                                        class="absolute -top-2 -right-2 bg-white border border-gray-200 text-gray-400 hover:text-red-500 rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
-                                    >
-                                        <svg
-                                            class="w-4 h-4"
-                                            fill="none"
-                                            stroke="currentColor"
-                                            viewBox="0 0 24 24"
-                                            ><path
-                                                stroke-linecap="round"
-                                                stroke-linejoin="round"
-                                                stroke-width="2"
-                                                d="M6 18L18 6M6 6l12 12"
-                                            ></path></svg
-                                        >
-                                    </button>
-                                {/if}
-                                <div class="space-y-3">
-                                    <div class="flex items-center gap-2">
-                                        <input
-                                            type="text"
-                                            bind:value={p.name}
-                                            oninput={saveAndRecalculate}
-                                            disabled={!isHost &&
-                                                p.id !== myParticipantId}
-                                            class="w-full px-3 py-2 border-transparent bg-white shadow-sm rounded-xl focus:ring-2 focus:ring-primary-500 text-sm font-bold text-gray-800 transition-colors disabled:bg-gray-100 disabled:text-gray-500"
-                                            placeholder="名前"
-                                        />
-                                        {#if isHost && p.id !== myParticipantId}
-                                            <button
-                                                onclick={() =>
-                                                    transferHost(p.id)}
-                                                class="text-[10px] text-indigo-600 hover:text-white hover:bg-indigo-500 bg-indigo-50 px-2 py-1.5 rounded-lg transition-colors font-bold whitespace-nowrap shadow-sm flex items-center gap-1 border border-indigo-100"
-                                                title="この人に幹事を渡す"
-                                            >
-                                                <svg
-                                                    class="w-3.5 h-3.5"
-                                                    fill="none"
-                                                    stroke="currentColor"
-                                                    viewBox="0 0 24 24"
-                                                    ><path
-                                                        stroke-linecap="round"
-                                                        stroke-linejoin="round"
-                                                        stroke-width="2.5"
-                                                        d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"
-                                                    ></path></svg
-                                                >
-                                                幹事に任命
-                                            </button>
-                                        {/if}
-                                    </div>
-
-                                    <div
-                                        class="flex items-center rounded-xl bg-gray-200 p-1 select-none {!isHost &&
-                                        p.id !== myParticipantId
-                                            ? 'opacity-50 pointer-events-none'
-                                            : ''}"
-                                    >
-                                        <button
-                                            onclick={() => {
-                                                p.paymentMethod = "PayPay";
-                                                saveAndRecalculate();
-                                            }}
-                                            class="flex-1 py-1.5 text-xs font-bold rounded-lg transition-all {p.paymentMethod ===
-                                            'PayPay'
-                                                ? 'bg-white text-[#FF0033] shadow-sm'
-                                                : 'text-gray-500 hover:text-gray-700'}"
-                                            >PayPay</button
-                                        >
-                                        <button
-                                            onclick={() => {
-                                                p.paymentMethod = "Cash";
-                                                saveAndRecalculate();
-                                            }}
-                                            class="flex-1 py-1.5 text-xs font-bold rounded-lg transition-all {p.paymentMethod ===
-                                            'Cash'
-                                                ? 'bg-white text-green-600 shadow-sm'
-                                                : 'text-gray-500 hover:text-gray-700'}"
-                                            >現金</button
-                                        >
-                                    </div>
-
-                                    {#if p.paymentMethod === "PayPay"}
-                                        <!-- Removed old paypayId input and tutorial -->
-                                    {/if}
-                                </div>
-                            </div>
-                        {/each}
-                    </div>
-
-                    <div class="mt-8 border-t border-gray-100 pt-5">
-                        <label
-                            class="block text-sm font-bold text-gray-700 mb-2"
-                            for="roundMode">現金派の丸め方</label
-                        >
-                        <select
-                            id="roundMode"
-                            bind:value={roundMode}
-                            onchange={saveAndRecalculate}
-                            disabled={!isHost}
-                            class="w-full px-3 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-primary-500 text-sm font-medium text-gray-700 disabled:opacity-50"
-                        >
-                            <option value="none">丸めない（1円単位）</option>
-                            <option value="nearest">普通に四捨五入</option>
-                            <option value="down">払い・受取りを少なく</option>
-                            <option value="up">払い・受取りを多く</option>
-                        </select>
-                    </div>
-                </section>
-            </div>
-
-            <!-- Results & Settlements (Moved directly under members) -->
-            <div class="space-y-6 pt-6">
-                <!-- Receipt removal notice -->
-                <div
-                    class="bg-gray-50/80 rounded-2xl p-4 text-gray-500 text-xs text-center border border-gray-100 flex items-center justify-center gap-2 shadow-sm"
-                >
-                    <svg
-                        class="w-4 h-4 text-gray-400"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                        ><path
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            stroke-width="2"
-                            d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                        ></path></svg
-                    >
-                    タブ1「注文メモ」の計算結果がここに自動反映されます
-                </div>
-
-                <div
-                    class="bg-white rounded-3xl shadow-[0_4px_20px_rgba(0,0,0,0.04)] overflow-hidden border border-gray-100/80"
-                >
-                    <div class="p-6 md:p-8">
-                        <h2
-                            class="text-xl font-bold mb-6 flex items-center gap-3 text-gray-800"
+                            class="text-xl font-bold text-gray-800 flex items-center gap-3"
                         >
                             <div
                                 class="w-10 h-10 rounded-2xl bg-indigo-50 flex items-center justify-center text-indigo-600 shadow-sm border border-indigo-100/50"
@@ -1335,309 +981,723 @@
                                     fill="none"
                                     stroke="currentColor"
                                     viewBox="0 0 24 24"
-                                    ><path
+                                >
+                                    <path
                                         stroke-linecap="round"
                                         stroke-linejoin="round"
                                         stroke-width="2.5"
-                                        d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"
-                                    ></path></svg
-                                >
+                                        d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
+                                    />
+                                </svg>
                             </div>
-                            最終精算
+                            現在の負担額
                         </h2>
+                        <div class="text-right">
+                            <span
+                                class="text-[10px] text-gray-400 font-bold uppercase tracking-wider block mb-0.5"
+                                >テーブル合計</span
+                            >
+                            <span
+                                class="text-2xl font-black text-indigo-600 tracking-tighter"
+                            >
+                                ¥{balances
+                                    .reduce(
+                                        (acc, b) =>
+                                            acc + Math.abs(b.roundedBalance),
+                                        0,
+                                    )
+                                    .toLocaleString()}
+                            </span>
+                        </div>
+                    </div>
 
-                        {#if unpaidCount > 0}
+                    <div class="space-y-3">
+                        {#each balances as r}
                             <div
-                                class="bg-red-50 border border-red-100 rounded-2xl p-4 flex items-center gap-4 shadow-sm mb-2"
+                                class="bg-white border border-gray-100 rounded-2xl p-4 flex justify-between items-center relative shadow-sm hover:shadow-md transition-shadow group"
+                            >
+                                {#if r.participantId === myParticipantId}
+                                    <div
+                                        class="absolute -top-2 left-4 bg-indigo-500 text-white text-[9px] font-black px-2 py-0.5 rounded-full shadow-sm z-10"
+                                    >
+                                        YOU
+                                    </div>
+                                {/if}
+                                <div class="flex items-center gap-3">
+                                    <div
+                                        class="w-10 h-10 rounded-xl bg-gray-50 flex items-center justify-center font-bold text-gray-400 border border-gray-100 text-xs transition-colors group-hover:bg-indigo-50 group-hover:text-indigo-400 group-hover:border-indigo-100"
+                                    >
+                                        {r.name.substring(0, 2)}
+                                    </div>
+                                    <div
+                                        class="font-bold text-gray-700 text-base"
+                                    >
+                                        {r.name}
+                                    </div>
+                                </div>
+                                <div class="text-right flex-shrink-0">
+                                    <div
+                                        class="text-xl font-black text-gray-800 tracking-tight"
+                                    >
+                                        ¥{Math.abs(
+                                            r.roundedBalance,
+                                        ).toLocaleString()}
+                                    </div>
+                                </div>
+                            </div>
+                        {/each}
+                        {#if balances.length === 0}
+                            <div
+                                class="text-center py-12 bg-gray-50/50 rounded-2xl border border-dashed border-gray-200"
+                            >
+                                <p class="text-sm text-gray-400 font-medium">
+                                    まだメンバーがいません
+                                </p>
+                            </div>
+                        {/if}
+                    </div>
+                </section>
+            </div>
+
+            <!-- Left Column: Numpad (Order 2 on mobile) -->
+            <div class="order-2 md:order-1">
+                <div class="md:sticky md:top-24 max-w-md mx-auto w-full">
+                    <div
+                        class="bg-white rounded-[2.5rem] shadow-[0_20px_50px_rgba(0,0,0,0.06)] border border-gray-100 p-6 md:p-8"
+                    >
+                        <!-- Display -->
+                        <div
+                            class="bg-gray-50 rounded-3xl p-5 mb-6 text-right overflow-hidden border border-gray-100 shadow-inner flex flex-col justify-center gap-1 min-h-[100px]"
+                        >
+                            <span
+                                class="text-gray-400 font-bold text-xs uppercase tracking-widest"
+                                >入力金額</span
+                            >
+                            <span
+                                class="text-5xl font-black text-gray-800 tracking-tighter truncate leading-none"
+                                >¥{currentAmount
+                                    ? parseInt(
+                                          currentAmount,
+                                          10,
+                                      ).toLocaleString()
+                                    : "0"}</span
+                            >
+                        </div>
+
+                        <!-- Action Buttons -->
+                        <div class="grid grid-cols-2 gap-4 mb-6">
+                            <button
+                                onclick={addAmountToMyself}
+                                class="bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-bold py-4 rounded-3xl flex flex-col items-center justify-center gap-2 active:scale-95 transition-all text-xs shadow-sm group border border-emerald-100/50"
                             >
                                 <div
-                                    class="bg-red-100 p-2.5 rounded-xl text-red-600 shadow-sm shrink-0"
+                                    class="w-10 h-10 rounded-2xl bg-white flex items-center justify-center text-emerald-500 shadow-sm border border-emerald-100 group-hover:scale-110 transition-transform"
                                 >
                                     <svg
-                                        class="w-5 h-5"
+                                        class="w-6 h-6"
                                         fill="none"
                                         stroke="currentColor"
                                         viewBox="0 0 24 24"
-                                        ><path
+                                    >
+                                        <path
                                             stroke-linecap="round"
                                             stroke-linejoin="round"
                                             stroke-width="2.5"
-                                            d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-                                        ></path></svg
-                                    >
+                                            d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                                        />
+                                    </svg>
                                 </div>
-                                <div class="flex flex-col">
-                                    <span
-                                        class="text-[#FF0033] font-black text-sm tracking-wide"
-                                        >未払い：残り{unpaidCount}名</span
-                                    >
-                                    <span
-                                        class="text-[#FF0033]/80 text-xs font-bold mt-0.5"
-                                        >送金後に「未完了」ボタンをタップして消し込めます</span
-                                    >
-                                </div>
-                            </div>
-                        {/if}
-
-                        <div class="space-y-6">
-                            <div>
-                                <h3
-                                    class="text-xs font-bold text-gray-400 mb-3 uppercase tracking-wider"
-                                >
-                                    誰が誰に払うか
-                                </h3>
-                                <div class="space-y-3">
-                                    {#if transactions.length === 0}
-                                        <div
-                                            class="bg-gray-50/50 rounded-2xl p-6 text-center text-gray-400 text-sm border border-gray-100"
-                                        >
-                                            精算が必要なトランザクションはありません。<br
-                                            />（みんなぴったりです！）
-                                        </div>
-                                    {:else}
-                                        {#each transactions as t}
-                                            {@const host = participants.find(
-                                                (p) => p.id === currentHostId,
-                                            )}
-                                            <div
-                                                class="bg-white rounded-2xl p-5 shadow-[0_2px_10px_rgba(0,0,0,0.03)] border border-gray-100/80 transform transition hover:-translate-y-1"
-                                            >
-                                                <div
-                                                    class="flex items-center justify-between mb-4"
-                                                >
-                                                    <div
-                                                        class="flex items-center gap-3 flex-1 overflow-hidden"
-                                                    >
-                                                        <div
-                                                            class="font-black text-gray-800 truncate text-base"
-                                                        >
-                                                            {t.fromName}
-                                                        </div>
-                                                        <div
-                                                            class="text-gray-300 flex-shrink-0"
-                                                        >
-                                                            <svg
-                                                                class="w-4 h-4"
-                                                                fill="none"
-                                                                stroke="currentColor"
-                                                                viewBox="0 0 24 24"
-                                                                ><path
-                                                                    stroke-linecap="round"
-                                                                    stroke-linejoin="round"
-                                                                    stroke-width="2"
-                                                                    d="M14 5l7 7m0 0l-7 7m7-7H3"
-                                                                ></path></svg
-                                                            >
-                                                        </div>
-                                                        <div
-                                                            class="font-bold text-gray-600 truncate text-base"
-                                                        >
-                                                            {t.toName}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                                <div
-                                                    class="flex items-end justify-between border-b border-gray-100 pb-4 mb-4"
-                                                >
-                                                    <span
-                                                        class="text-[10px] font-black px-2.5 py-1 rounded-lg uppercase tracking-wider {t.method ===
-                                                        'PayPay'
-                                                            ? 'bg-[#FF0033]/10 text-[#FF0033]'
-                                                            : 'bg-emerald-100 text-emerald-700'}"
-                                                    >
-                                                        {t.method}
-                                                    </span>
-                                                    <span
-                                                        class="text-4xl md:text-5xl font-black text-gray-800 tracking-tighter"
-                                                        >¥{t.amount.toLocaleString()}</span
-                                                    >
-                                                </div>
-
-                                                {#if t.method === "PayPay" && host?.paypayLink}
-                                                    <button
-                                                        onclick={() =>
-                                                            handlePayPayClick(
-                                                                t.fromId,
-                                                                t.amount,
-                                                            )}
-                                                        class="w-full flex items-center justify-center gap-2 px-4 py-3 bg-[#FF0033] text-white text-sm font-bold rounded-xl hover:bg-[#E6002E] transition-all shadow-md shadow-[#FF0033]/30 active:scale-95"
-                                                    >
-                                                        <svg
-                                                            class="w-5 h-5"
-                                                            fill="none"
-                                                            stroke="currentColor"
-                                                            viewBox="0 0 24 24"
-                                                            ><path
-                                                                stroke-linecap="round"
-                                                                stroke-linejoin="round"
-                                                                stroke-width="2"
-                                                                d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"
-                                                            ></path></svg
-                                                        >
-                                                        PayPayで送金する
-                                                    </button>
-                                                {/if}
-                                            </div>
-                                        {/each}
-                                    {/if}
-
-                                    {#if hostAbsorbedAmount > 0 && roundMode !== "none"}
-                                        {@const host = participants.find(
-                                            (p) => p.id === currentHostId,
-                                        )}
-                                        {#if host}
-                                            <div
-                                                class="mt-4 p-4 bg-indigo-50/50 rounded-2xl border border-indigo-100/50 flex items-center justify-center gap-3 shadow-sm"
-                                            >
-                                                <div class="text-indigo-400">
-                                                    <svg
-                                                        class="w-5 h-5"
-                                                        fill="none"
-                                                        stroke="currentColor"
-                                                        viewBox="0 0 24 24"
-                                                        ><path
-                                                            stroke-linecap="round"
-                                                            stroke-linejoin="round"
-                                                            stroke-width="2"
-                                                            d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"
-                                                        ></path></svg
-                                                    >
-                                                </div>
-                                                <div
-                                                    class="text-xs font-bold text-indigo-700 leading-relaxed text-center"
-                                                >
-                                                    幹事（{host.name}）が計
-                                                    <span
-                                                        class="text-indigo-900 text-sm mx-0.5"
-                                                        >¥{Math.round(
-                                                            hostAbsorbedAmount,
-                                                        ).toLocaleString()}</span
-                                                    > の端数を被ってくれています
-                                                </div>
-                                            </div>
-                                        {/if}
-                                    {/if}
-                                </div>
-                            </div>
-
-                            <div class="pt-8 border-t border-gray-100">
-                                <h3
-                                    class="text-xs font-bold text-gray-400 mb-4 uppercase tracking-wider"
-                                >
-                                    個人のトータル収支
-                                </h3>
+                                自分の支払いに
+                            </button>
+                            <button
+                                onclick={addAmountToAll}
+                                class="bg-indigo-50 text-indigo-700 hover:bg-indigo-100 font-bold py-4 rounded-3xl flex flex-col items-center justify-center gap-2 active:scale-95 transition-all text-xs shadow-sm group border border-indigo-100/50"
+                            >
                                 <div
-                                    class="grid grid-cols-2 sm:grid-cols-3 gap-3"
+                                    class="w-10 h-10 rounded-2xl bg-white flex items-center justify-center text-indigo-500 shadow-sm border border-indigo-100 group-hover:scale-110 transition-transform"
                                 >
-                                    {#each balances as r}
-                                        <div
-                                            class="bg-gray-50/80 p-4 rounded-2xl flex flex-col items-center text-center relative border transition-all {r.participantId ===
-                                            myParticipantId
-                                                ? 'border-indigo-200 shadow-sm shadow-indigo-100/50 bg-indigo-50/30'
-                                                : 'border-transparent'}"
-                                        >
-                                            {#if r.participantId === myParticipantId}
-                                                <span
-                                                    class="absolute -top-2.5 bg-indigo-500 text-white text-[9px] font-black px-2.5 py-0.5 rounded-full z-10 shadow-sm"
-                                                    >YOU</span
-                                                >
-                                            {/if}
-                                            <span
-                                                class="text-xs font-bold text-gray-500 mb-1.5 w-full truncate"
-                                                >{r.name}</span
-                                            >
-                                            <span
-                                                class="text-xl font-black tracking-tight {r.roundedBalance >
-                                                0
-                                                    ? 'text-emerald-500'
-                                                    : r.roundedBalance < 0
-                                                      ? 'text-gray-800'
-                                                      : 'text-gray-400'}"
-                                            >
-                                                {r.roundedBalance > 0
-                                                    ? "+"
-                                                    : ""}{r.roundedBalance.toLocaleString()}
-                                            </span>
-                                            <span
-                                                class="text-[10px] mt-1 font-bold text-gray-400"
-                                                >{r.paymentMethod}</span
-                                            >
-
-                                            <!-- Sync settlement button -->
-                                            <button
-                                                onclick={() =>
-                                                    toggleSettlement(
-                                                        r.participantId,
-                                                    )}
-                                                disabled={r.participantId !==
-                                                    myParticipantId && !isHost}
-                                                class="mt-4 w-full py-2.5 text-xs font-black rounded-xl transition-all flex items-center justify-center gap-1.5 {settlements[
-                                                    r.participantId
-                                                ]
-                                                    ? 'bg-emerald-500 text-white shadow-sm hover:bg-emerald-600'
-                                                    : 'bg-white text-gray-400 border border-gray-200 shadow-sm hover:bg-gray-50 hover:text-gray-600 disabled:opacity-50 disabled:hover:bg-white disabled:shadow-none'}"
-                                            >
-                                                {#if settlements[r.participantId]}
-                                                    <svg
-                                                        class="w-3.5 h-3.5"
-                                                        fill="none"
-                                                        stroke="currentColor"
-                                                        viewBox="0 0 24 24"
-                                                        ><path
-                                                            stroke-linecap="round"
-                                                            stroke-linejoin="round"
-                                                            stroke-width="3"
-                                                            d="M5 13l4 4L19 7"
-                                                        ></path></svg
-                                                    >
-                                                    支払済
-                                                {:else}
-                                                    <svg
-                                                        class="w-3.5 h-3.5 opacity-70"
-                                                        fill="none"
-                                                        stroke="currentColor"
-                                                        viewBox="0 0 24 24"
-                                                        ><path
-                                                            stroke-linecap="round"
-                                                            stroke-linejoin="round"
-                                                            stroke-width="2"
-                                                            d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                                                        ></path></svg
-                                                    >
-                                                    未完了
-                                                {/if}
-                                            </button>
-                                        </div>
-                                    {/each}
+                                    <svg
+                                        class="w-6 h-6"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                    >
+                                        <path
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                            stroke-width="2.5"
+                                            d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"
+                                        />
+                                    </svg>
                                 </div>
-                            </div>
+                                全員で割る
+                            </button>
+                        </div>
+
+                        <!-- Keys -->
+                        <div class="grid grid-cols-3 gap-3">
+                            {#each ["7", "8", "9", "4", "5", "6", "1", "2", "3", "00", "0", "C"] as key}
+                                <button
+                                    onclick={() => handleNumpad(key)}
+                                    class="{key === 'C'
+                                        ? 'bg-red-50 text-red-500 hover:bg-red-100 border-red-100'
+                                        : 'bg-white text-gray-800 hover:bg-gray-50 border-gray-100'} font-black text-2xl py-5 rounded-3xl shadow-sm border active:scale-95 transition-all"
+                                    >{key}</button
+                                >
+                            {/each}
                         </div>
                     </div>
                 </div>
             </div>
+        </div>
+    </div>
 
-            {#if isHost}
-                <div class="pt-8 mb-8">
+    <!-- TAB 2: SETTLE -->
+    <div
+        class="{activeTab === 'settle'
+            ? 'block'
+            : 'hidden'} max-w-3xl mx-auto px-4 space-y-8 mt-6 pb-20"
+    >
+        {#if isHost}
+            <!-- HOST VIEW: Collection Dashboard -->
+            <section class="space-y-6 animate-fade-in">
+                <!-- Dashboard Summary Card (Enhanced Progress) -->
+                {@const totalExpected = transactions.reduce(
+                    (acc, t) => acc + t.amount,
+                    0,
+                )}
+                {@const currentCollected = transactions
+                    .filter((t) => settlements[t.fromId])
+                    .reduce((acc, t) => acc + t.amount, 0)}
+                {@const totalGuests = transactions.length}
+                {@const paidGuests = totalGuests - unpaidCount}
+                {@const progressPercent =
+                    totalExpected > 0
+                        ? (currentCollected / totalExpected) * 100
+                        : 0}
+                {@const isComplete = totalGuests > 0 && unpaidCount === 0}
+
+                <div
+                    class="bg-white rounded-[2.5rem] shadow-[0_20px_60px_rgba(0,0,0,0.05)] border border-gray-100 p-8 space-y-8"
+                >
+                    <div
+                        class="flex flex-col md:flex-row md:items-end justify-between gap-6"
+                    >
+                        <div class="space-y-1">
+                            <h2
+                                class="text-gray-400 text-xs font-black uppercase tracking-[0.2em]"
+                            >
+                                集金状況
+                            </h2>
+                            <div class="flex items-baseline gap-2">
+                                <span
+                                    class="text-5xl font-black text-gray-900 tracking-tighter"
+                                    >¥{currentCollected.toLocaleString()}</span
+                                >
+                                <span class="text-xl font-bold text-gray-300"
+                                    >/ ¥{totalExpected.toLocaleString()}</span
+                                >
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-sm font-black text-gray-500 mb-1">
+                                集金済み <span class="text-indigo-600 text-lg"
+                                    >{paidGuests}</span
+                                >
+                                / {totalGuests} 人
+                            </div>
+                            {#if isComplete}
+                                <div
+                                    class="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-600 rounded-lg text-xs font-black border border-emerald-100"
+                                >
+                                    <svg
+                                        class="w-3.5 h-3.5"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                    >
+                                        <path
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                            stroke-width="3"
+                                            d="M5 13l4 4L19 7"
+                                        />
+                                    </svg>
+                                    集金完了！
+                                </div>
+                            {:else}
+                                <div
+                                    class="inline-flex items-center gap-1.5 px-3 py-1 bg-indigo-50 text-indigo-600 rounded-lg text-xs font-black border border-indigo-100"
+                                >
+                                    残り {unpaidCount} 人
+                                </div>
+                            {/if}
+                        </div>
+                    </div>
+
+                    <div class="space-y-3">
+                        <div
+                            class="relative w-full h-4 bg-gray-100 rounded-full overflow-hidden shadow-inner"
+                        >
+                            <div
+                                class="absolute top-0 left-0 h-full transition-all duration-700 ease-out {isComplete
+                                    ? 'bg-emerald-500'
+                                    : 'bg-indigo-600'}"
+                                style="width: {progressPercent}%"
+                            >
+                                {#if progressPercent > 10}
+                                    <div
+                                        class="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent animate-[shimmer_2s_infinite]"
+                                    ></div>
+                                {/if}
+                            </div>
+                        </div>
+                        <div
+                            class="flex justify-between text-[10px] font-black text-gray-400 uppercase tracking-widest px-1"
+                        >
+                            <span>START</span>
+                            <span>{Math.round(progressPercent)}%</span>
+                            <span>GOAL</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Guest List (Settlement Tracking) -->
+                <div class="space-y-4">
+                    <div class="flex items-center justify-between pl-4 pr-2">
+                        <h3
+                            class="text-sm font-black text-gray-400 uppercase tracking-widest"
+                        >
+                            ゲスト別ステータス
+                        </h3>
+                        <div
+                            class="text-[10px] font-bold text-gray-300 uppercase"
+                        >
+                            タップして変更
+                        </div>
+                    </div>
+
+                    <div class="grid gap-3">
+                        {#each transactions as t}
+                            {@const isPaid = settlements[t.fromId]}
+                            <div
+                                class="bg-white rounded-3xl p-5 border border-gray-100 shadow-sm flex items-center justify-between transition-all duration-300 {isPaid
+                                    ? 'opacity-40 grayscale-[30%]'
+                                    : 'hover:shadow-md hover:border-indigo-100 group'}"
+                            >
+                                <div class="flex items-center gap-4">
+                                    <div
+                                        class="w-12 h-12 rounded-2xl flex items-center justify-center font-bold border transition-colors {isPaid
+                                            ? 'bg-gray-100 text-gray-400 border-gray-200'
+                                            : 'bg-indigo-50 text-indigo-600 border-indigo-100 group-hover:bg-indigo-600 group-hover:text-white'}"
+                                    >
+                                        {t.fromName.substring(0, 1)}
+                                    </div>
+                                    <div>
+                                        <div
+                                            class="font-black text-gray-800 text-lg leading-tight transition-colors {isPaid
+                                                ? 'text-gray-400'
+                                                : 'text-gray-900'}"
+                                        >
+                                            {t.fromName}
+                                        </div>
+                                        <div
+                                            class="text-2xl font-black transition-colors {isPaid
+                                                ? 'text-gray-400'
+                                                : 'text-indigo-600'}"
+                                        >
+                                            ¥{t.amount.toLocaleString()}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <button
+                                    onclick={() => toggleSettlement(t.fromId)}
+                                    class="flex items-center gap-2 px-5 py-3 rounded-2xl font-black text-sm transition-all shadow-sm active:scale-95 {isPaid
+                                        ? 'bg-emerald-500 text-white border border-emerald-500 shadow-emerald-100'
+                                        : 'bg-white text-indigo-600 border-2 border-indigo-50 hover:border-indigo-600 hover:bg-indigo-50'}"
+                                >
+                                    {#if isPaid}
+                                        <svg
+                                            class="w-4 h-4"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            viewBox="0 0 24 24"
+                                        >
+                                            <path
+                                                stroke-linecap="round"
+                                                stroke-linejoin="round"
+                                                stroke-width="4"
+                                                d="M5 13l4 4L19 7"
+                                            />
+                                        </svg>
+                                        支払済
+                                    {:else}
+                                        未完了
+                                    {/if}
+                                </button>
+                            </div>
+                        {/each}
+                        {#if transactions.length === 0}
+                            <div
+                                class="text-center py-16 bg-white rounded-[2.5rem] border-2 border-dashed border-gray-100"
+                            >
+                                <p class="text-gray-400 font-bold">
+                                    精算が必要なゲストはいません
+                                </p>
+                            </div>
+                        {/if}
+                    </div>
+                </div>
+
+                <!-- Settings for Host (Participants & Round Mode) -->
+                <div class="pt-10 border-t border-gray-100 space-y-8">
+                    <div class="flex items-center justify-between px-2">
+                        <h2
+                            class="text-lg font-black text-gray-800 tracking-tight"
+                        >
+                            メンバー設定
+                        </h2>
+                        <button
+                            onclick={addParticipant}
+                            class="flex items-center gap-2 bg-gray-900 text-white px-4 py-2 rounded-xl text-xs font-black hover:bg-gray-800 transition-colors shadow-lg shadow-gray-200"
+                        >
+                            <svg
+                                class="w-4 h-4"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                            >
+                                <path
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    stroke-width="3"
+                                    d="M12 4v16m8-8H4"
+                                />
+                            </svg>
+                            メンバー追加
+                        </button>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {#each participants as p (p.id)}
+                            <div
+                                class="bg-white border border-gray-100 rounded-3xl p-5 shadow-sm relative group"
+                            >
+                                <button
+                                    onclick={() => removeParticipant(p.id)}
+                                    class="absolute -top-2 -right-2 bg-white border border-gray-200 text-gray-300 hover:text-red-500 rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-opacity shadow-md"
+                                >
+                                    <svg
+                                        class="w-4 h-4"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                    >
+                                        <path
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                            stroke-width="2.5"
+                                            d="M6 18L18 6M6 6l12 12"
+                                        />
+                                    </svg>
+                                </button>
+                                <div class="space-y-4">
+                                    <input
+                                        type="text"
+                                        bind:value={p.name}
+                                        oninput={saveAndRecalculate}
+                                        class="w-full px-4 py-2 bg-gray-50 border-transparent focus:bg-white focus:ring-2 focus:ring-indigo-500 rounded-xl text-sm font-black text-gray-800 transition-all"
+                                        placeholder="名前"
+                                    />
+
+                                    <div
+                                        class="flex items-center rounded-2xl bg-gray-100 p-1"
+                                    >
+                                        <button
+                                            onclick={() => {
+                                                p.paymentMethod = "PayPay";
+                                                saveAndRecalculate();
+                                            }}
+                                            class="flex-1 py-2 text-[10px] font-black rounded-xl transition-all {p.paymentMethod ===
+                                            'PayPay'
+                                                ? 'bg-white text-[#FF0033] shadow-sm'
+                                                : 'text-gray-400'}"
+                                            >PayPay</button
+                                        >
+                                        <button
+                                            onclick={() => {
+                                                p.paymentMethod = "Cash";
+                                                saveAndRecalculate();
+                                            }}
+                                            class="flex-1 py-2 text-[10px] font-black rounded-xl transition-all {p.paymentMethod ===
+                                            'Cash'
+                                                ? 'bg-white text-emerald-600 shadow-sm'
+                                                : 'text-gray-400'}">現金</button
+                                        >
+                                    </div>
+
+                                    {#if currentHostId === p.id && p.paymentMethod === "PayPay"}
+                                        <input
+                                            type="text"
+                                            bind:value={p.paypayLink}
+                                            oninput={saveAndRecalculate}
+                                            class="w-full px-4 py-2 bg-red-50/50 border border-red-100 focus:bg-white focus:ring-2 focus:ring-[#FF0033] rounded-xl text-xs font-bold text-[#FF0033] transition-all"
+                                            placeholder="PayPay受取リンク (https://paypay.me/...)"
+                                        />
+                                    {/if}
+
+                                    {#if currentHostId !== p.id}
+                                        <button
+                                            onclick={() => transferHost(p.id)}
+                                            class="w-full py-2 bg-indigo-50 text-indigo-600 rounded-xl text-[10px] font-black hover:bg-indigo-600 hover:text-white transition-all border border-indigo-100/50"
+                                            >幹事を交代する</button
+                                        >
+                                    {:else}
+                                        <div
+                                            class="w-full py-2 bg-indigo-600 text-white rounded-xl text-[10px] font-black text-center shadow-md shadow-indigo-100"
+                                        >
+                                            あなたは幹事です
+                                        </div>
+                                    {/if}
+                                </div>
+                            </div>
+                        {/each}
+                    </div>
+
+                    <div
+                        class="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm"
+                    >
+                        <label
+                            class="block text-xs font-black text-gray-400 uppercase tracking-widest mb-3"
+                            for="roundMode">現金派の丸め方</label
+                        >
+                        <div class="grid grid-cols-2 gap-2">
+                            {#each [{ val: "none", label: "1円単位" }, { val: "nearest", label: "四捨五入" }, { val: "down", label: "切り捨て" }, { val: "up", label: "切り上げ" }] as opt}
+                                <button
+                                    onclick={() => {
+                                        roundMode = opt.val as any;
+                                        saveAndRecalculate();
+                                    }}
+                                    class="py-3 rounded-xl border font-bold text-xs transition-all {roundMode ===
+                                    opt.val
+                                        ? 'bg-indigo-600 border-indigo-600 text-white shadow-lg shadow-indigo-100'
+                                        : 'bg-white border-gray-100 text-gray-500 hover:border-indigo-200'}"
+                                    >{opt.label}</button
+                                >
+                            {/each}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Delete Room Action -->
+                <div class="pt-10 mb-8 border-t border-gray-100">
                     <button
                         onclick={deleteRoom}
-                        class="w-full py-4 bg-red-50 hover:bg-red-100 text-red-600 text-sm font-bold rounded-2xl transition-colors border border-red-100 shadow-sm flex items-center justify-center gap-2"
+                        class="w-full py-5 bg-red-50 hover:bg-red-100 text-[#FF0033] text-sm font-black rounded-3xl transition-all border border-red-100 shadow-sm flex items-center justify-center gap-2 active:scale-95"
                     >
                         <svg
                             class="w-5 h-5"
                             fill="none"
                             stroke="currentColor"
                             viewBox="0 0 24 24"
-                            ><path
+                        >
+                            <path
+                                stroke-linecap="round"
+                                stroke-linejoin="round"
+                                stroke-width="2.5"
+                                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                            />
+                        </svg>
+                        ルームを完全に削除して精算を終える
+                    </button>
+                </div>
+            </section>
+        {:else}
+            <!-- GUEST VIEW: Payment Mission Card -->
+            <section class="animate-fade-in space-y-8 py-4">
+                {@const myTransaction = transactions.find(
+                    (t) => t.fromId === myParticipantId,
+                )}
+                {@const host = participants.find((p) => p.id === currentHostId)}
+
+                {#if myTransaction}
+                    <div
+                        class="bg-white rounded-[3rem] shadow-[0_30px_70px_rgba(0,0,0,0.08)] border border-gray-100 p-10 flex flex-col items-center text-center gap-8"
+                    >
+                        <div class="space-y-2">
+                            <span
+                                class="text-gray-400 text-xs font-black uppercase tracking-[0.3em]"
+                                >支払いミッション</span
+                            >
+                            <h2
+                                class="text-3xl font-black text-gray-900 tracking-tight leading-tight"
+                            >
+                                <span class="text-indigo-600"
+                                    >幹事（{myTransaction.toName}）</span
+                                >へ<br />
+                                <span
+                                    class="text-6xl font-[1000] tracking-[-0.05em] block my-4 italic"
+                                    >¥{myTransaction.amount.toLocaleString()}</span
+                                >
+                                支払う
+                            </h2>
+                        </div>
+
+                        <div class="w-full space-y-3">
+                            {#if myTransaction.method === "PayPay" && host?.paypayLink}
+                                <button
+                                    onclick={() =>
+                                        handlePayPayClick(
+                                            myTransaction.fromId,
+                                            myTransaction.amount,
+                                        )}
+                                    class="w-full flex items-center justify-center gap-4 py-6 bg-[#FF0033] text-white text-xl font-black rounded-3xl hover:bg-[#E6002E] transition-all shadow-2xl shadow-[#FF0033]/30 active:scale-95 group"
+                                >
+                                    <svg
+                                        class="w-8 h-8 group-hover:scale-110 transition-transform"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                    >
+                                        <path
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                            stroke-width="2.5"
+                                            d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"
+                                        />
+                                    </svg>
+                                    PayPayで送金
+                                </button>
+                            {:else if myTransaction.method === "PayPay"}
+                                <div
+                                    class="p-6 bg-red-50 text-[#FF0033] rounded-3xl border border-red-100 flex flex-col items-center gap-2"
+                                >
+                                    <svg
+                                        class="w-10 h-10"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                    >
+                                        <path
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                            stroke-width="2"
+                                            d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                                        />
+                                    </svg>
+                                    <p class="font-black">
+                                        幹事のPayPayリンクが未設定です
+                                    </p>
+                                    <p class="text-xs font-bold opacity-70">
+                                        幹事に設定を依頼してください。
+                                    </p>
+                                </div>
+                            {:else}
+                                <div
+                                    class="p-8 bg-emerald-50 text-emerald-700 rounded-[2.5rem] border border-emerald-100 flex flex-col items-center gap-3"
+                                >
+                                    <svg
+                                        class="w-12 h-12 text-emerald-400"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                    >
+                                        <path
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                            stroke-width="2.5"
+                                            d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm-5-2a2 2 0 11-4 0 2 2 0 014 0z"
+                                        />
+                                    </svg>
+                                    <p class="text-2xl font-black">
+                                        現金で手渡し
+                                    </p>
+                                    <p class="text-xs font-bold opacity-70">
+                                        お釣りが出ないように準備しましょう
+                                    </p>
+                                </div>
+                            {/if}
+
+                            <button
+                                onclick={() =>
+                                    toggleSettlement(myParticipantId!)}
+                                class="w-full py-5 rounded-3xl font-black transition-all shadow-sm active:scale-95 border-2 {settlements[
+                                    myParticipantId!
+                                ]
+                                    ? 'bg-emerald-50 text-emerald-600 border-emerald-200'
+                                    : 'bg-white text-gray-800 border-gray-100 hover:border-indigo-500 hover:text-indigo-600'}"
+                            >
+                                {settlements[myParticipantId!]
+                                    ? "✓ 支払い完了報告済み"
+                                    : "幹事に支払い完了を報告する"}
+                            </button>
+                        </div>
+                    </div>
+                {:else}
+                    <div
+                        class="bg-white rounded-[3rem] shadow-[0_20px_50px_rgba(0,0,0,0.04)] border border-gray-100 p-12 flex flex-col items-center text-center gap-6"
+                    >
+                        <div
+                            class="w-20 h-20 rounded-[2.5rem] bg-emerald-50 flex items-center justify-center text-emerald-500 mb-2"
+                        >
+                            <svg
+                                class="w-10 h-10"
+                                fill="none"
+                                stroke="currentColor"
+                                viewBox="0 0 24 24"
+                            >
+                                <path
+                                    stroke-linecap="round"
+                                    stroke-linejoin="round"
+                                    stroke-width="3"
+                                    d="M5 13l4 4L19 7"
+                                />
+                            </svg>
+                        </div>
+                        <h2
+                            class="text-3xl font-black text-gray-900 tracking-tight leading-tight"
+                        >
+                            支払いはありません！
+                        </h2>
+                        <p class="text-gray-500 font-bold leading-relaxed">
+                            あなたはぴったり、または精算不要です。<br />
+                            快適な残りの時間をお過ごしください。
+                        </p>
+                    </div>
+                {/if}
+
+                {#if hostAbsorbedAmount > 0}
+                    <div
+                        class="bg-indigo-50/50 rounded-3xl p-6 border border-indigo-100/50 flex items-center justify-center gap-4"
+                    >
+                        <svg
+                            class="w-8 h-8 text-indigo-400"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                        >
+                            <path
                                 stroke-linecap="round"
                                 stroke-linejoin="round"
                                 stroke-width="2"
-                                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                            ></path></svg
+                                d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"
+                            />
+                        </svg>
+                        <p
+                            class="text-xs font-bold text-indigo-700 leading-relaxed"
                         >
-                        精算を完全に終了する（ルーム削除）
-                    </button>
-                </div>
-            {/if}
-        </div>
+                            幹事が計 <span class="text-indigo-900 text-sm"
+                                >¥{Math.round(
+                                    hostAbsorbedAmount,
+                                ).toLocaleString()}</span
+                            >
+                            の端数を<br />
+                            被ってくれています。感謝しましょう！
+                        </p>
+                    </div>
+                {/if}
+            </section>
+        {/if}
     </div>
 </main>
