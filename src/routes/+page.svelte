@@ -89,11 +89,19 @@
             const snap = await getDoc(roomRef);
 
             if (snap.exists() && snap.data().status === "active") {
-                alert(
-                    "この合言葉は現在他の人が使用中です。別の合言葉にしてください。",
-                );
-                isCreating = false;
-                return;
+                const data = snap.data();
+                const expiresAt = data.expiresAt?.toDate
+                    ? data.expiresAt.toDate()
+                    : new Date(data.expiresAt);
+
+                if (expiresAt > new Date()) {
+                    alert(
+                        "この合言葉は現在他の人が使用中です。別の合言葉にしてください。",
+                    );
+                    isCreating = false;
+                    return;
+                }
+                // If expired, we'll overwrite it below
             }
 
             const roomId = customRoomId;
@@ -142,6 +150,16 @@
         try {
             const snap = await getDoc(doc(db, "rooms", joinPin));
             if (snap.exists() && snap.data().status === "active") {
+                const data = snap.data();
+                const expiresAt = data.expiresAt?.toDate
+                    ? data.expiresAt.toDate()
+                    : new Date(data.expiresAt);
+
+                if (expiresAt < new Date()) {
+                    alert("この合言葉は有効期限が切れています。");
+                    isJoining = false;
+                    return;
+                }
                 await goto(`/room/${joinPin}`);
             } else {
                 alert("ルームが見つからないか、既に終了しています。");
@@ -186,10 +204,16 @@
 
                     if (distance <= 100) {
                         // 100m以内のルーム
-                        rooms.push({
-                            id: data.id,
-                            distance: Math.round(distance),
-                        });
+                        const expiresAt = data.expiresAt?.toDate
+                            ? data.expiresAt.toDate()
+                            : new Date(data.expiresAt);
+
+                        if (expiresAt > new Date()) {
+                            rooms.push({
+                                id: data.id,
+                                distance: Math.round(distance),
+                            });
+                        }
                     }
                 }
             });

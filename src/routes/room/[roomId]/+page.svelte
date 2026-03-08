@@ -57,6 +57,9 @@
 
     let unsubscribe: (() => void) | undefined;
 
+    let isOcrLoading = $state(false);
+    let fileInput: HTMLInputElement;
+
     // Will be defined at the bottom
     let startTutorial = $state(() => {});
 
@@ -409,6 +412,50 @@
         showToastNotification(
             `各員に ¥${perPerson.toLocaleString()} ずつ追加しました${remainder > 0 ? `（端数 ${remainder}円はあなたに加算）` : ""}`,
         );
+    }
+
+    async function handleReceiptCapture(e: Event) {
+        const target = e.target as HTMLInputElement;
+        const file = target.files?.[0];
+        if (!file) return;
+
+        isOcrLoading = true;
+
+        try {
+            // 画像をBase64に変換
+            const reader = new FileReader();
+            const base64Promise = new Promise<string>((resolve, reject) => {
+                reader.onload = () => resolve(reader.result as string);
+                reader.onerror = reject;
+            });
+            reader.readAsDataURL(file);
+            const base64Image = await base64Promise;
+
+            // API送信
+            const response = await fetch("/api/ocr", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ image: base64Image }),
+            });
+
+            const result = await response.json();
+
+            if (result.amount) {
+                currentAmount = result.amount.toString();
+                showToastNotification(
+                    `レシートから ¥${result.amount.toLocaleString()} を読み取りました`,
+                );
+            } else if (result.error) {
+                alert(result.error);
+            }
+        } catch (err) {
+            console.error("OCR Error:", err);
+            alert("レシートの解析に失敗しました。");
+        } finally {
+            isOcrLoading = false;
+            // Clear input for next capture
+            target.value = "";
+        }
     }
 
     async function generateQrCode() {
@@ -1198,7 +1245,7 @@
                     >
                         <!-- Display -->
                         <div
-                            class="bg-gray-50 rounded-3xl p-5 mb-6 text-right overflow-hidden border border-gray-100 shadow-inner flex flex-col justify-center gap-1 min-h-[100px]"
+                            class="bg-gray-50 rounded-3xl p-6 mb-6 text-right overflow-hidden border border-gray-200/50 shadow-inner flex flex-col justify-center gap-1 min-h-[120px] relative transition-all"
                         >
                             <span
                                 class="text-gray-400 font-bold text-xs uppercase tracking-widest"
@@ -1213,7 +1260,78 @@
                                       ).toLocaleString()
                                     : "0"}</span
                             >
+
+                            <!-- OCR Camera Button (Relocated & Refined) -->
+                            <div class="absolute left-5 bottom-5">
+                                <input
+                                    type="file"
+                                    accept="image/*"
+                                    capture="environment"
+                                    bind:this={fileInput}
+                                    onchange={handleReceiptCapture}
+                                    class="hidden"
+                                />
+                                <button
+                                    onclick={() => fileInput.click()}
+                                    class="flex items-center gap-2 px-4 py-2 bg-white/80 backdrop-blur-sm hover:bg-white text-gray-600 rounded-xl shadow-sm border border-gray-200 transition-all active:scale-95 group"
+                                    title="レシートをスキャナ"
+                                >
+                                    <svg
+                                        class="w-4 h-4 text-indigo-500 group-hover:scale-110 transition-transform"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                    >
+                                        <path
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                            stroke-width="2.5"
+                                            d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"
+                                        />
+                                        <path
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                            stroke-width="2.5"
+                                            d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"
+                                        />
+                                    </svg>
+                                    <span
+                                        class="text-[11px] font-black tracking-tight"
+                                        >レシート読取</span
+                                    >
+                                </button>
+                            </div>
                         </div>
+
+                        {#if isOcrLoading}
+                            <div
+                                class="absolute inset-0 bg-white/80 backdrop-blur-sm z-20 rounded-[2.5rem] flex flex-col items-center justify-center gap-4 animate-fade-in"
+                            >
+                                <div class="relative">
+                                    <div
+                                        class="w-12 h-12 border-4 border-indigo-100 border-t-indigo-600 rounded-full animate-spin"
+                                    ></div>
+                                    <svg
+                                        class="w-6 h-6 text-indigo-600 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                    >
+                                        <path
+                                            stroke-linecap="round"
+                                            stroke-linejoin="round"
+                                            stroke-width="2.5"
+                                            d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"
+                                        />
+                                    </svg>
+                                </div>
+                                <p
+                                    class="text-sm font-black text-indigo-600 animate-pulse"
+                                >
+                                    レシートを解析中...
+                                </p>
+                            </div>
+                        {/if}
 
                         <!-- Action Buttons -->
                         <div class="grid grid-cols-2 gap-4 mb-6">
