@@ -60,6 +60,15 @@
     // Will be defined at the bottom
     let startTutorial = $state(() => {});
 
+    // Lock background scroll when modal is open
+    $effect(() => {
+        if (showIdentityModal || showQrModal) {
+            document.body.style.overflow = "hidden";
+        } else {
+            document.body.style.overflow = "";
+        }
+    });
+
     onMount(() => {
         const savedIdentity = localStorage.getItem(`room_${roomId}_identity`);
         if (savedIdentity) {
@@ -130,9 +139,9 @@
             }
         });
 
-        // Initialize driver.js tutorial if not seen
+        // Initialize driver.js tutorial if not seen and already joined
         setTimeout(() => {
-            if (!localStorage.getItem("hasSeenTutorial")) {
+            if (myParticipantId && !localStorage.getItem("hasSeenTutorial")) {
                 startTutorial();
             }
         }, 1000); // Small delay to let DOM paint first
@@ -210,6 +219,13 @@
         );
         showIdentityModal = false;
 
+        // Start tutorial if joining for the first time
+        setTimeout(() => {
+            if (!localStorage.getItem("hasSeenTutorial")) {
+                startTutorial();
+            }
+        }, 500);
+
         if (participants.length === 1) {
             saveStateToFirebase({ hostId: id });
         } else {
@@ -227,12 +243,28 @@
             }),
         );
         showIdentityModal = false;
+
+        // Start tutorial if joining as existing for the first time
+        setTimeout(() => {
+            if (!localStorage.getItem("hasSeenTutorial")) {
+                startTutorial();
+            }
+        }, 500);
     }
 
     function toggleSettlement(pid: string) {
-        if (myParticipantId !== pid && !isHost) return;
+        if (!isHost) return;
         settlements[pid] = !settlements[pid];
         saveStateToFirebase();
+    }
+
+    function updateMyPaymentMethod(method: "PayPay" | "Cash") {
+        if (!myParticipantId) return;
+        const p = participants.find((p) => p.id === myParticipantId);
+        if (p) {
+            p.paymentMethod = method;
+            saveAndRecalculate();
+        }
     }
 
     async function transferHost(newHostId: string) {
@@ -604,6 +636,15 @@
             color: #9ca3af !important;
             padding: 4px !important;
         }
+
+        /* Utility: Hide scrollbar */
+        .scrollbar-none::-webkit-scrollbar {
+            display: none;
+        }
+        .scrollbar-none {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
     </style>
 </svelte:head>
 
@@ -667,7 +708,9 @@
     <div
         class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
     >
-        <div class="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl">
+        <div
+            class="bg-white rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl max-h-[90vh] overflow-y-auto"
+        >
             <h2 class="text-xl font-bold mb-6 text-gray-800 text-center">
                 {isHost ? "幹事としてルームを始めます" : "ルームに参加します"}
             </h2>
@@ -743,52 +786,106 @@
                         />
 
                         <div
-                            class="bg-gray-50 rounded-2xl p-4 border border-gray-100 flex flex-col gap-3"
+                            class="bg-gray-50 rounded-2xl p-4 border border-gray-100"
                         >
-                            <div
-                                class="text-xs text-gray-500 font-medium space-y-1.5"
+                            <p
+                                class="font-extrabold text-gray-800 mb-4 flex items-center gap-2 text-sm"
                             >
-                                <p
-                                    class="font-bold text-gray-600 mb-2 flex items-center gap-1.5"
+                                <svg
+                                    class="w-5 h-5 text-[#FF0033]"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
                                 >
-                                    <svg
-                                        class="w-4 h-4 text-indigo-500"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        viewBox="0 0 24 24"
-                                        ><path
-                                            stroke-linecap="round"
-                                            stroke-linejoin="round"
-                                            stroke-width="2.5"
-                                            d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                                        ></path></svg
+                                    <path
+                                        stroke-linecap="round"
+                                        stroke-linejoin="round"
+                                        stroke-width="2.5"
+                                        d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                                    />
+                                </svg>
+                                URLの取得方法（3ステップ）
+                            </p>
+
+                            <div
+                                class="flex gap-4 overflow-x-auto pb-6 -mx-2 px-2 scrollbar-none snap-x"
+                            >
+                                <!-- Step 1 -->
+                                <div class="flex-shrink-0 w-48 snap-start">
+                                    <div
+                                        class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-2 aspect-[4/5] relative group"
                                     >
-                                    リンクの取得方法
-                                </p>
-                                <ul class="space-y-1 ml-1 leading-relaxed">
-                                    <li class="flex items-center gap-2">
-                                        <span
-                                            class="w-4 h-4 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-[10px] font-bold"
-                                            >1</span
+                                        <img
+                                            src="/step1.png"
+                                            alt="Step 1"
+                                            class="w-full h-full object-cover object-bottom transition-transform group-hover:scale-110"
+                                        />
+                                        <div
+                                            class="absolute top-2 left-2 w-6 h-6 bg-gray-900/80 backdrop-blur text-white text-[10px] font-black rounded-full flex items-center justify-center border border-white/20"
                                         >
-                                        PayPay右下の「アカウント」
-                                    </li>
-                                    <li class="flex items-center gap-2">
-                                        <span
-                                            class="w-4 h-4 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-[10px] font-bold"
-                                            >2</span
+                                            1
+                                        </div>
+                                    </div>
+                                    <p
+                                        class="text-[10px] font-bold text-gray-500 leading-snug"
+                                    >
+                                        右下の<span class="text-gray-900"
+                                            >「アカウント」</span
+                                        >をタップ
+                                    </p>
+                                </div>
+
+                                <!-- Step 2 -->
+                                <div class="flex-shrink-0 w-48 snap-start">
+                                    <div
+                                        class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-2 aspect-[4/5] relative group"
+                                    >
+                                        <img
+                                            src="/step2.png"
+                                            alt="Step 2"
+                                            class="w-full h-full object-cover transition-transform group-hover:scale-110"
+                                        />
+                                        <div
+                                            class="absolute top-2 left-2 w-6 h-6 bg-gray-900/80 backdrop-blur text-white text-[10px] font-black rounded-full flex items-center justify-center border border-white/20"
                                         >
-                                        「マイコード」をタップ
-                                    </li>
-                                    <li class="flex items-center gap-2">
-                                        <span
-                                            class="w-4 h-4 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-[10px] font-bold"
-                                            >3</span
+                                            2
+                                        </div>
+                                    </div>
+                                    <p
+                                        class="text-[10px] font-bold text-gray-500 leading-snug"
+                                    >
+                                        中央の<span class="text-gray-900"
+                                            >「マイコード」</span
+                                        >を選択
+                                    </p>
+                                </div>
+
+                                <!-- Step 3 -->
+                                <div class="flex-shrink-0 w-48 snap-start">
+                                    <div
+                                        class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden mb-2 aspect-[4/5] relative group"
+                                    >
+                                        <img
+                                            src="/step3.png"
+                                            alt="Step 3"
+                                            class="w-full h-full object-cover transition-transform group-hover:scale-110"
+                                        />
+                                        <div
+                                            class="absolute top-2 left-2 w-6 h-6 bg-gray-900/80 backdrop-blur text-white text-[10px] font-black rounded-full flex items-center justify-center border border-white/20"
                                         >
-                                        「このページのURLをコピー」
-                                    </li>
-                                </ul>
+                                            3
+                                        </div>
+                                    </div>
+                                    <p
+                                        class="text-[10px] font-bold text-gray-500 leading-snug"
+                                    >
+                                        下部の<span class="text-gray-900"
+                                            >「リンクをコピー」</span
+                                        >をタップ
+                                    </p>
+                                </div>
                             </div>
+
                             <button
                                 onclick={() =>
                                     window.open(
@@ -796,20 +893,21 @@
                                         "_blank",
                                         "noopener,noreferrer",
                                     )}
-                                class="w-full flex items-center justify-center gap-2 py-2.5 border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 hover:text-gray-800 rounded-xl text-xs font-bold transition-all shadow-sm active:scale-95"
+                                class="w-full flex items-center justify-center gap-2 py-3 bg-[#FF0033]/5 text-[#FF0033] hover:bg-[#FF0033]/10 rounded-2xl text-xs font-black transition-all shadow-sm active:scale-95 border border-[#FF0033]/10"
                             >
                                 <svg
                                     class="w-4 h-4"
                                     fill="none"
                                     stroke="currentColor"
                                     viewBox="0 0 24 24"
-                                    ><path
+                                >
+                                    <path
                                         stroke-linecap="round"
                                         stroke-linejoin="round"
-                                        stroke-width="2"
+                                        stroke-width="2.5"
                                         d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"
-                                    ></path></svg
-                                >
+                                    />
+                                </svg>
                                 PayPayアプリを開く
                             </button>
                         </div>
@@ -1578,6 +1676,38 @@
                             </h2>
                         </div>
 
+                        <!-- Payment Method Toggle for Guest -->
+                        <div class="w-full max-w-[280px] space-y-2">
+                            <span
+                                class="text-[10px] text-gray-400 font-black uppercase tracking-widest"
+                                >支払い方法を変更</span
+                            >
+                            <div
+                                class="flex items-center rounded-2xl bg-gray-100 p-1"
+                            >
+                                <button
+                                    onclick={() =>
+                                        updateMyPaymentMethod("PayPay")}
+                                    class="flex-1 py-3 text-sm font-black rounded-xl transition-all {myTransaction.method ===
+                                    'PayPay'
+                                        ? 'bg-white text-[#FF0033] shadow-sm'
+                                        : 'text-gray-400'}"
+                                >
+                                    PayPay
+                                </button>
+                                <button
+                                    onclick={() =>
+                                        updateMyPaymentMethod("Cash")}
+                                    class="flex-1 py-3 text-sm font-black rounded-xl transition-all {myTransaction.method ===
+                                    'Cash'
+                                        ? 'bg-white text-emerald-600 shadow-sm'
+                                        : 'text-gray-400'}"
+                                >
+                                    現金
+                                </button>
+                            </div>
+                        </div>
+
                         <div class="w-full space-y-3">
                             {#if myTransaction.method === "PayPay" && host?.paypayLink}
                                 <button
@@ -1653,19 +1783,16 @@
                                 </div>
                             {/if}
 
-                            <button
-                                onclick={() =>
-                                    toggleSettlement(myParticipantId!)}
-                                class="w-full py-5 rounded-3xl font-black transition-all shadow-sm active:scale-95 border-2 {settlements[
-                                    myParticipantId!
-                                ]
-                                    ? 'bg-emerald-50 text-emerald-600 border-emerald-200'
-                                    : 'bg-white text-gray-800 border-gray-100 hover:border-indigo-500 hover:text-indigo-600'}"
+                            <div
+                                class="w-full py-6 px-4 rounded-[2rem] bg-gray-50 border border-gray-100/50"
                             >
-                                {settlements[myParticipantId!]
-                                    ? "✓ 支払い完了報告済み"
-                                    : "幹事に支払い完了を報告する"}
-                            </button>
+                                <p
+                                    class="text-xs font-bold text-gray-500 leading-relaxed"
+                                >
+                                    ※ 送金（または手渡し）が終わったら、<br />
+                                    幹事に伝えて完了ステータスにしてもらってください
+                                </p>
+                            </div>
                         </div>
                     </div>
                 {:else}
