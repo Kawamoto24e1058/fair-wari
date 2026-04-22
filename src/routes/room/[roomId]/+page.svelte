@@ -18,6 +18,7 @@
         updateDoc,
         getDoc,
         deleteDoc,
+        runTransaction,
     } from "firebase/firestore";
     import QRCode from "qrcode";
 
@@ -158,13 +159,20 @@
         if (!isInitialized) return;
         const roomRef = doc(db, "rooms", roomId as string);
 
-        // Calculate expiration: Now + 1 hour
+        // Calculate expiration: Now + 24 hours
         const expirationDate = new Date();
-        expirationDate.setHours(expirationDate.getHours() + 1);
+        expirationDate.setHours(expirationDate.getHours() + 24);
 
+        // $state はSvelte 5のProxyオブジェクトでラップされているため、
+        // Firebaseに保存する前に $state.snapshot() で純粋なJSオブジェクトに変換する。
+        // そのままProxyを渡すとFirestoreのシリアライズで既存データが失われるバグがある。
         await updateDoc(roomRef, {
-            state: { participants, events, roundMode },
-            settlements,
+            state: {
+                participants: $state.snapshot(participants),
+                events: $state.snapshot(events),
+                roundMode,
+            },
+            settlements: $state.snapshot(settlements),
             expiresAt: expirationDate, // Rolling TTL update
             ...extraData,
         });
@@ -204,13 +212,8 @@
         };
         participants.push(newP);
 
-        events.forEach((e) => {
-            e.participations.push({
-                participantId: id,
-                weight: 1,
-                fixedAdjustment: 0,
-            });
-        });
+        // 既存イベントへは遡及追加しない。
+        // 参加後に新規作成されるイベントには addEvent() 内で自動的に追加される。
 
         myParticipantId = id;
         localStorage.setItem(
@@ -257,8 +260,18 @@
 
     function toggleSettlement(pid: string) {
         if (!isHost) return;
-        settlements[pid] = !settlements[pid];
-        saveStateToFirebase();
+        const newValue = !settlements[pid];
+        settlements[pid] = newValue;
+
+        // settlements 全体を上書きするのではなく、該当IDだけをドット記法で部分更新する。
+        // こうすることで、別ユーザーが同時に保存しても互いの支払済みステータスを上書きしない。
+        const roomRef = doc(db, "rooms", roomId as string);
+        const expirationDate = new Date();
+        expirationDate.setHours(expirationDate.getHours() + 24);
+        updateDoc(roomRef, {
+            [`settlements.${pid}`]: newValue,
+            expiresAt: expirationDate,
+        });
     }
 
     function updateMyPaymentMethod(method: "PayPay" | "Cash") {
@@ -330,7 +343,9 @@
 
         if (myParticipantId === fromId) {
             settlements[fromId] = true;
-            saveStateToFirebase();
+            // ドット記法で自分のステータスだけ部分更新（他のステータスを上書きしない）
+            const roomRef = doc(db, "rooms", roomId as string);
+            updateDoc(roomRef, { [`settlements.${fromId}`]: true });
         }
 
         try {
@@ -370,7 +385,7 @@
         }
     }
 
-    function addAmountToMyself() {
+    async function addAmountToMyself() {
         if (!currentAmount) return;
         const amount = parseInt(currentAmount, 10);
         if (isNaN(amount) || amount <= 0) return;
@@ -380,38 +395,100 @@
             );
 
         const targetP = participants.find((p) => p.id === myParticipantId);
-        if (targetP) {
-            targetP.amount = (targetP.amount || 0) + amount;
-            currentAmount = "";
-            saveAndRecalculate();
+        if (!targetP) return;
+
+        // --- 楽観的ローカル更新（即時UI反映）---
+        const savedInput = currentAmount;
+        currentAmount = "";
+        targetP.amount = (targetP.amount || 0) + amount;
+        updateCalculation();
+
+        // --- Firestore トランザクションで安全に書き込み ---
+        // サーバー最新値に対して加算するため、他の人の同時更新があっても値が消えない。
+        const roomRef = doc(db, "rooms", roomId as string);
+        const targetId = myParticipantId;
+        try {
+            await runTransaction(db, async (transaction) => {
+                const snap = await transaction.get(roomRef);
+                if (!snap.exists()) return;
+                const data = snap.data();
+                const serverParts: Participant[] = data.state?.participants || [];
+                const updatedParts = serverParts.map((p: Participant) =>
+                    p.id === targetId
+                        ? { ...p, amount: (p.amount || 0) + amount }
+                        : p,
+                );
+                const expirationDate = new Date();
+                expirationDate.setHours(expirationDate.getHours() + 24);
+                transaction.update(roomRef, {
+                    "state.participants": updatedParts,
+                    expiresAt: expirationDate,
+                });
+            });
             showToastNotification(
                 `自分の負担に ¥${amount.toLocaleString()} を追加しました`,
             );
+        } catch (err) {
+            console.error("Transaction failed (addAmountToMyself)", err);
+            currentAmount = savedInput; // 入力値を復元
+            showToastNotification("保存に失敗しました。再度お試しください。");
         }
     }
 
-    function addAmountToAll() {
+    async function addAmountToAll() {
         if (!currentAmount) return;
         const amount = parseInt(currentAmount, 10);
         if (isNaN(amount) || amount <= 0) return;
         if (participants.length === 0) return alert("メンバーがいません");
 
+        // ボタン押下時点のメンバーで割り勘を計算（後から参加した人は含まない）
         const perPerson = Math.floor(amount / participants.length);
         const remainder = amount % participants.length;
+        const splitTargetIds = new Set(participants.map((p) => p.id));
+        const savedInput = currentAmount;
 
-        participants.forEach((p) => {
-            p.amount = (p.amount || 0) + perPerson;
-            // The person performing the operation absorbs the remainder
-            if (p.id === myParticipantId) {
-                p.amount += remainder;
-            }
-        });
-
+        // --- 楽観的ローカル更新（即時UI反映）---
         currentAmount = "";
-        saveAndRecalculate();
-        showToastNotification(
-            `各員に ¥${perPerson.toLocaleString()} ずつ追加しました${remainder > 0 ? `（端数 ${remainder}円はあなたに加算）` : ""}`,
-        );
+        participants.forEach((p) => {
+            p.amount =
+                (p.amount || 0) +
+                perPerson +
+                (p.id === myParticipantId ? remainder : 0);
+        });
+        updateCalculation();
+
+        // --- Firestore トランザクションで安全に書き込み ---
+        // ボタン押下時のメンバーIDリストを使い、サーバー最新値へ加算する。
+        // 同時に別のメンバーが金額を更新していてもデータが失われない。
+        const roomRef = doc(db, "rooms", roomId as string);
+        const operatorId = myParticipantId;
+        try {
+            await runTransaction(db, async (transaction) => {
+                const snap = await transaction.get(roomRef);
+                if (!snap.exists()) return;
+                const data = snap.data();
+                const serverParts: Participant[] = data.state?.participants || [];
+                const updatedParts = serverParts.map((p: Participant) => {
+                    if (!splitTargetIds.has(p.id)) return p; // 割り勘後に参加した人はスキップ
+                    const add =
+                        perPerson + (p.id === operatorId ? remainder : 0);
+                    return { ...p, amount: (p.amount || 0) + add };
+                });
+                const expirationDate = new Date();
+                expirationDate.setHours(expirationDate.getHours() + 24);
+                transaction.update(roomRef, {
+                    "state.participants": updatedParts,
+                    expiresAt: expirationDate,
+                });
+            });
+            showToastNotification(
+                `各員に ¥${perPerson.toLocaleString()} ずつ追加しました${remainder > 0 ? `（端数 ${remainder}円はあなたに加算）` : ""}`,
+            );
+        } catch (err) {
+            console.error("Transaction failed (addAmountToAll)", err);
+            currentAmount = savedInput; // 入力値を復元
+            showToastNotification("保存に失敗しました。再度お試しください。");
+        }
     }
 
     async function handleReceiptCapture(e: Event) {
@@ -480,13 +557,8 @@
             paypayId: "",
             amount: 0,
         });
-        events.forEach((e) => {
-            e.participations.push({
-                participantId: id,
-                weight: 1,
-                fixedAdjustment: 0,
-            });
-        });
+        // 既存イベントへは遡及追加しない。
+        // 参加後に新規作成されるイベントには addEvent() 内で自動的に追加される。
         saveAndRecalculate();
     }
 
